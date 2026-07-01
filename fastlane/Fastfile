@@ -25,36 +25,47 @@ platform :ios do
     )
   end
 
-  # 만료·CI 잉여 인증서를 정리해 Apple 계정 한도(3개)를 확보합니다.
+  # CI에서는 모든 인증서를 정리해 한도·포털/키체인 불일치를 해소합니다.
   private_lane :prune_certificates do
     Spaceship::ConnectAPI.token = connect_api_token
 
-    Spaceship::ConnectAPI::Certificate.all.each do |certificate|
-      next unless certificate.expiration_date
-
-      expires_at = Time.parse(certificate.expiration_date.to_s)
-      next if expires_at >= Time.now
-
-      UI.message("Revoking expired certificate: #{certificate.display_name} (#{certificate.id})")
-      certificate.delete!
-    end
+    certificates = Spaceship::ConnectAPI::Certificate.all
+    UI.message("Found #{certificates.length} certificates on developer account")
 
     if ENV["CI"]
-      %w[IOS_DEVELOPMENT IOS_DISTRIBUTION].each do |certificate_type|
-        Spaceship::ConnectAPI::Certificate.all.select do |certificate|
-          certificate.certificate_type == certificate_type
-        end.each do |certificate|
-          UI.message("Revoking CI #{certificate_type} certificate: #{certificate.display_name} (#{certificate.id})")
-          certificate.delete!
-        end
+      certificates.each do |certificate|
+        UI.message("Revoking CI certificate [#{certificate.certificate_type}]: #{certificate.display_name} (#{certificate.id})")
+        certificate.delete!
+      end
+    else
+      certificates.each do |certificate|
+        next unless certificate.expiration_date
+
+        expires_at = Time.parse(certificate.expiration_date.to_s)
+        next if expires_at >= Time.now
+
+        UI.message("Revoking expired certificate: #{certificate.display_name} (#{certificate.id})")
+        certificate.delete!
       end
     end
+  end
+
+  private_lane :install_wwdr_certificate do
+    wwdr_path = "/tmp/AppleWWDRCAG4.cer"
+    sh("curl -sf https://www.apple.com/certificateauthority/AppleWWDRCAG4.cer -o #{wwdr_path}")
+    keychain_path = File.expand_path("#{lane_context[SharedValues::KEYCHAIN_PATH]}-db")
+    import_certificate(
+      certificate_path: wwdr_path,
+      keychain_path: keychain_path,
+      keychain_password: ""
+    )
   end
 
   private_lane :setup_distribution_signing do |options|
     api_key = options[:api_key]
 
     prune_certificates
+    install_wwdr_certificate
 
     cert(api_key: api_key, force: false)
 
