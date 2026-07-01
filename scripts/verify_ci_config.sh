@@ -24,6 +24,8 @@ check "fastlane passes xcode auth via xcargs" "grep -q 'authenticationKeyPath' f
 check "bundle id configured" "grep -q 'com.ijaejun.anyapp' fastlane/Appfile"
 check "team id configured" "grep -q 'T5CBR768BM' fastlane/Appfile"
 check "Gemfile.lock present" "test -f Gemfile.lock"
+check "app icon 120px present" "test -f anyapp/Assets.xcassets/AppIcon.appiconset/AppIcon-120.png"
+check "app icon 1024px present" "test -f anyapp/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
 
 if [[ "$errors" -gt 0 ]]; then
   echo "$errors check(s) failed." >&2
