@@ -12,8 +12,9 @@ protocol MicrophonePermissionProviding: Sendable {
 }
 
 protocol AudioSessionConfiguring: Sendable {
-    func deactivateSession() throws
+    func deactivateSession()
     func configureForRecording() throws
+    func configureForPlayback() throws
 }
 
 protocol RecordingCapturing: AnyObject {
@@ -36,29 +37,35 @@ struct SystemMicrophonePermissionProvider: MicrophonePermissionProviding {
     func requestRecordPermission() async -> Bool {
         await withCheckedContinuation { continuation in
             AVAudioApplication.requestRecordPermission { granted in
-                Task { @MainActor in
-                    continuation.resume(returning: granted)
-                }
+                continuation.resume(returning: granted)
             }
         }
     }
 }
 
 struct SystemAudioSessionConfigurator: AudioSessionConfiguring {
-    func deactivateSession() throws {
-        try AVAudioSession.sharedInstance().setActive(
+    func deactivateSession() {
+        try? AVAudioSession.sharedInstance().setActive(
             false,
             options: .notifyOthersOnDeactivation
         )
     }
 
     func configureForRecording() throws {
+        deactivateSession()
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(
             .playAndRecord,
             mode: .default,
-            options: [.defaultToSpeaker]
+            options: [.defaultToSpeaker, .allowBluetoothHFP]
         )
+        try session.setActive(true)
+    }
+
+    func configureForPlayback() throws {
+        deactivateSession()
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playback, mode: .default)
         try session.setActive(true)
     }
 }
@@ -162,6 +169,30 @@ final class AudioRecorder {
         state = granted ? .idle : .permissionDenied
     }
 
+    func refreshPermissionState() {
+        guard isPrepared else { return }
+        switch permissionProvider.recordPermission {
+        case .granted:
+            if case .permissionDenied = state {
+                state = .idle
+            }
+        case .denied:
+            state = .permissionDenied
+        case .undetermined:
+            break
+        @unknown default:
+            break
+        }
+    }
+
+    func activatePlaybackSession() throws {
+        try sessionConfigurator.configureForPlayback()
+    }
+
+    func deactivatePlaybackSession() {
+        sessionConfigurator.deactivateSession()
+    }
+
     func startRecording(to url: URL) throws {
         guard isPrepared else {
             throw RecordingError.notPrepared
@@ -175,7 +206,6 @@ final class AudioRecorder {
         clearErrorState()
 
         do {
-            try sessionConfigurator.deactivateSession()
             try sessionConfigurator.configureForRecording()
         } catch {
             state = .error("오디오 세션을 설정할 수 없습니다.")
@@ -185,15 +215,23 @@ final class AudioRecorder {
         do {
             recorder = try captureMaker.makeRecorder(url: url, settings: Self.recordingSettings)
         } catch {
+            sessionConfigurator.deactivateSession()
             state = .error("녹음 장치를 초기화할 수 없습니다.")
             throw error
         }
 
         recorder?.isMeteringEnabled = false
-        recorder?.prepareToRecord()
+
+        guard recorder?.prepareToRecord() == true else {
+            recorder = nil
+            sessionConfigurator.deactivateSession()
+            state = .error(RecordingError.failedToStart.errorDescription ?? "녹음을 시작할 수 없습니다.")
+            throw RecordingError.failedToStart
+        }
 
         guard recorder?.record() == true else {
             recorder = nil
+            sessionConfigurator.deactivateSession()
             state = .error(RecordingError.failedToStart.errorDescription ?? "녹음을 시작할 수 없습니다.")
             throw RecordingError.failedToStart
         }
@@ -212,7 +250,7 @@ final class AudioRecorder {
         let duration = recorder?.currentTime ?? elapsedTime
         recorder = nil
 
-        try? sessionConfigurator.deactivateSession()
+        sessionConfigurator.deactivateSession()
         state = .idle
 
         return duration > 0 ? duration : nil

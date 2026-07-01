@@ -61,8 +61,9 @@ private final class MockFlowPermissionProvider: MicrophonePermissionProviding, @
 }
 
 private final class MockFlowSessionConfigurator: AudioSessionConfiguring, @unchecked Sendable {
-    func deactivateSession() throws {}
+    func deactivateSession() {}
     func configureForRecording() throws {}
+    func configureForPlayback() throws {}
 }
 
 private final class MockFlowCapture: RecordingCapturing, @unchecked Sendable {

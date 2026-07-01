@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ItemDetailView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @Bindable var item: Item
     @State private var recorder = AudioRecorder()
     @State private var player: AVAudioPlayer?
@@ -20,8 +21,8 @@ struct ItemDetailView: View {
     @State private var saveErrorMessage: String?
     @State private var transcriptionErrorMessage: String?
     @State private var recordingErrorMessage: String?
-    @State private var isRecorderReady = false
     @State private var processingStatus: ProcessingStatus?
+    @State private var transcriptionTask: Task<Void, Never>?
     @FocusState private var isTextFieldFocused: Bool
 
     private enum ProcessingStatus {
@@ -141,13 +142,21 @@ struct ItemDetailView: View {
         }
         .task {
             await recorder.prepare()
-            isRecorderReady = true
+        }
+        .task {
             _ = await SpeechTranscriber.requestAuthorization()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                recorder.refreshPermissionState()
+            }
         }
         .onChange(of: draftText) {
             hasUnsavedChanges = !draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
         .onDisappear {
+            transcriptionTask?.cancel()
+            transcriptionTask = nil
             finishRecordingIfNeeded()
             stopPlayback()
             if hasUnsavedChanges {
@@ -176,8 +185,10 @@ struct ItemDetailView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("micButton")
-        .disabled(!isRecorderReady || !recorder.canRecord || processingStatus != nil)
-        .opacity(isRecorderReady && recorder.canRecord && processingStatus == nil ? 1 : 0.45)
+        .accessibilityLabel(recorder.isRecording ? "녹음 중지" : "녹음 시작")
+        .accessibilityHint(recorder.canRecord ? "" : "마이크 권한이 필요합니다")
+        .disabled(!recorder.isPrepared || (processingStatus != nil && !recorder.isRecording))
+        .opacity(recorder.isPrepared && (recorder.canRecord || recorder.isRecording) && (processingStatus == nil || recorder.isRecording) ? 1 : 0.45)
         .animation(.easeInOut(duration: 0.2), value: recorder.isRecording)
     }
 
@@ -221,6 +232,8 @@ struct ItemDetailView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("playbackButton")
+            .disabled(recorder.isRecording)
+            .opacity(recorder.isRecording ? 0.45 : 1)
 
             Text(formattedDuration(duration))
                 .font(.subheadline)
@@ -254,24 +267,29 @@ struct ItemDetailView: View {
             return
         }
 
-        recordingErrorMessage = nil
-        recorder.clearErrorState()
-        stopPlayback()
-        item.deleteAudioFile()
+        Task { @MainActor in
+            if !recorder.canRecord {
+                await recorder.prepare()
+                guard recorder.canRecord else { return }
+            }
 
-        let url = AudioFileStore.newRecordingURL()
-        pendingRecordingFileName = url.lastPathComponent
+            recordingErrorMessage = nil
+            recorder.clearErrorState()
+            stopPlayback()
+            item.deleteAudioFile()
 
-        do {
-            try recorder.startRecording(to: url)
-        } catch {
-            pendingRecordingFileName = nil
-            try? FileManager.default.removeItem(at: url)
-            let message = (error as? LocalizedError)?.errorDescription
-                ?? recorder.lastErrorMessage
-                ?? "녹음을 시작할 수 없습니다."
-            recordingErrorMessage = message
-            Task { @MainActor in
+            let url = AudioFileStore.newRecordingURL()
+            pendingRecordingFileName = url.lastPathComponent
+
+            do {
+                try recorder.startRecording(to: url)
+            } catch {
+                pendingRecordingFileName = nil
+                try? FileManager.default.removeItem(at: url)
+                let message = recorder.lastErrorMessage
+                    ?? (error as? LocalizedError)?.errorDescription
+                    ?? "녹음을 시작할 수 없습니다."
+                recordingErrorMessage = message
                 try? await Task.sleep(for: .seconds(3))
                 recordingErrorMessage = nil
             }
@@ -301,21 +319,37 @@ struct ItemDetailView: View {
         pendingRecordingFileName = nil
 
         if let savedURL {
-            Task { await processTranscription(from: savedURL) }
+            transcriptionTask?.cancel()
+            transcriptionTask = Task { await processTranscription(from: savedURL) }
         }
     }
 
     private func processTranscription(from url: URL) async {
+        guard !Task.isCancelled else { return }
+
         transcriptionErrorMessage = nil
         processingStatus = .transcribing
 
         // 녹음 파일이 디스크에 완전히 기록될 때까지 잠시 대기
         try? await Task.sleep(for: .milliseconds(200))
+        guard !Task.isCancelled else {
+            processingStatus = nil
+            return
+        }
 
         do {
             let rawText = try await SpeechTranscriber.transcribe(url: url)
+            guard !Task.isCancelled else {
+                processingStatus = nil
+                return
+            }
+
             processingStatus = .correcting
             let corrected = await TextCorrector.correct(rawText)
+            guard !Task.isCancelled else {
+                processingStatus = nil
+                return
+            }
 
             if item.textNote.isEmpty {
                 item.textNote = corrected
@@ -324,12 +358,15 @@ struct ItemDetailView: View {
             }
             try modelContext.save()
         } catch {
+            guard !Task.isCancelled else {
+                processingStatus = nil
+                return
+            }
+
             transcriptionErrorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "음성을 텍스트로 변환하지 못했습니다."
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(3))
-                transcriptionErrorMessage = nil
-            }
+            try? await Task.sleep(for: .seconds(3))
+            transcriptionErrorMessage = nil
         }
 
         processingStatus = nil
@@ -379,10 +416,7 @@ struct ItemDetailView: View {
         }
 
         do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default)
-            try session.setActive(true)
-
+            try recorder.activatePlaybackSession()
             player = try AVAudioPlayer(contentsOf: url)
             player?.play()
             isPlaying = true
@@ -395,7 +429,7 @@ struct ItemDetailView: View {
         player?.stop()
         player = nil
         isPlaying = false
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        recorder.deactivatePlaybackSession()
     }
 
     private func formattedDuration(_ duration: TimeInterval) -> String {
