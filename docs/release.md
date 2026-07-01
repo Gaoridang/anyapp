@@ -29,7 +29,7 @@ Xcode에서 Target → General → Version을 수정하거나, `anyapp.xcodeproj
 
 **자동 관리**
 
-`main`에 push되면 GitHub Actions가 Fastlane `beta` lane을 실행하고, 빌드 번호를 아래 규칙으로 설정합니다.
+`main`에 앱/배포 관련 변경이 push되면 GitHub Actions가 Fastlane `beta` lane을 실행하고, 빌드 번호를 아래 규칙으로 설정합니다.
 
 ```
 max(GITHUB_RUN_NUMBER, TestFlight 최신 빌드 번호 + 1)
@@ -37,7 +37,18 @@ max(GITHUB_RUN_NUMBER, TestFlight 최신 빌드 번호 + 1)
 
 로직은 [`fastlane/Fastfile`](../fastlane/Fastfile)의 `next_build_number`에 있습니다.
 
-**수동으로 올리지 않습니다.** `main` 머지마다 CI가 처리합니다.
+**수동으로 올리지 않습니다.** CI가 처리합니다. 문서만 변경된 push는 TestFlight 워크플로우를 트리거하지 않습니다.
+
+## CI 완료 vs TestFlight 설치 가능
+
+이 두 시점은 다릅니다.
+
+| 시점 | 의미 | 예상 소요 |
+|---|---|---|
+| **CI 완료** | GitHub Actions가 빌드·업로드까지 성공 | 약 3~6분 (runner 큐 대기 포함) |
+| **TestFlight 설치 가능** | Apple 서버 처리 완료 후 TestFlight 앱에 표시 | CI 완료 후 추가 1~5분 |
+
+CI는 업로드 직후 완료됩니다 (`skip_waiting_for_build_processing: true`). TestFlight 앱에서 빌드가 보이고 설치 가능해지기까지는 Apple 측 처리 시간이 추가로 필요합니다.
 
 ## 현재 빌드 확인
 
@@ -47,16 +58,28 @@ max(GITHUB_RUN_NUMBER, TestFlight 최신 빌드 번호 + 1)
 ## 배포 흐름
 
 ```
-main push → GitHub Actions (TestFlight workflow)
+main push (앱/배포 경로 변경 시)
+         → GitHub Actions (TestFlight workflow)
          → fastlane beta
          → 빌드 번호 자동 증가
          → 빌드 & TestFlight 업로드
-         → Apple 빌드 처리 (수 분 소요)
+         → CI 완료 (GitHub Actions 성공)
+         → Apple 빌드 처리 (1~5분, TestFlight 앱에서 확인)
          → TestFlight에서 설치 가능
 ```
+
+## CI 최적화
+
+TestFlight 워크플로우는 아래 최적화가 적용되어 있습니다.
+
+- **Apple 처리 대기 스킵** — CI는 업로드 직후 완료
+- **DerivedData 캐시** — 2회차 이후 빌드 시간 단축
+- **경로 필터** — `anyapp/`, `fastlane/` 등 배포 관련 변경 시에만 실행
+- **CI 빌드 플래그** — `ENABLE_PREVIEWS=NO`, `COMPILER_INDEX_STORE_ENABLE=NO`
 
 ## 관련 파일
 
 - [`anyapp.xcodeproj/project.pbxproj`](../anyapp.xcodeproj/project.pbxproj) — `MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`
 - [`fastlane/Fastfile`](../fastlane/Fastfile) — 빌드 번호 자동 증가 로직
-- [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml) — CI 트리거 (`main` push)
+- [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml) — CI 트리거 (경로 필터 + `workflow_dispatch`)
+- [`.github/workflows/ci-verify.yml`](../.github/workflows/ci-verify.yml) — CI 설정 검증

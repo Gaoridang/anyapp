@@ -70,7 +70,12 @@ platform :ios do
       "-authenticationKeyPath", asc_key_path,
       "-authenticationKeyID", asc_key_id,
       "-authenticationKeyIssuerID", asc_issuer_id
-    ].join(" ")
+    ]
+
+    if ENV["CI"]
+      xcode_auth_args << "ENABLE_PREVIEWS=NO"
+      xcode_auth_args << "COMPILER_INDEX_STORE_ENABLE=NO"
+    end
 
     build_options = {
       scheme: "anyapp",
@@ -80,7 +85,8 @@ platform :ios do
       output_directory: "./build",
       output_name: "anyapp.ipa",
       include_bitcode: false,
-      xcargs: xcode_auth_args
+      clean: ENV["DERIVED_DATA_CACHE_HIT"] != "true",
+      xcargs: xcode_auth_args.join(" ")
     }
 
     if ENV["PROVISIONING_PROFILE_NAME"]
@@ -100,7 +106,7 @@ platform :ios do
 
     upload_to_testflight(
       api_key: api_key,
-      skip_waiting_for_build_processing: false,
+      skip_waiting_for_build_processing: true,
       distribute_external: false,
       uses_non_exempt_encryption: false
     )

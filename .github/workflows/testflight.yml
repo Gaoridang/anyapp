@@ -1,11 +1,17 @@
 name: TestFlight
 
-# main push 시 TestFlight에 자동 배포합니다.
+# 앱/배포 관련 경로 변경 시 TestFlight에 자동 배포합니다.
 # 빌드 번호는 fastlane이 자동 증가합니다 (docs/release.md 참고).
 
 on:
   push:
     branches: [main]
+    paths:
+      - "anyapp/**"
+      - "fastlane/**"
+      - "Gemfile"
+      - "Gemfile.lock"
+      - ".github/workflows/testflight.yml"
   workflow_dispatch:
 
 concurrency:
@@ -29,10 +35,14 @@ jobs:
         with:
           xcode-version: "26.5"
 
-      - name: Install Apple WWDR certificate
-        run: |
-          curl -fsSL -o /tmp/AppleWWDRCAG3.cer https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer
-          security import /tmp/AppleWWDRCAG3.cer -k ~/Library/Keychains/login.keychain-db -T /usr/bin/codesign -T /usr/bin/security
+      - name: Cache DerivedData
+        id: deriveddata-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: deriveddata-${{ runner.os }}-xcode26.5-${{ hashFiles('anyapp/**/*.swift', 'anyapp.xcodeproj/**') }}
+          restore-keys: |
+            deriveddata-${{ runner.os }}-xcode26.5-
 
       - name: Write App Store Connect API key
         env:
@@ -49,9 +59,6 @@ jobs:
           bundler-cache: true
           working-directory: .
 
-      - name: Verify CI configuration
-        run: ./scripts/verify_ci_config.sh
-
       - name: Deploy to TestFlight
         # MARKETING_VERSION은 Xcode에서 수동 관리, 빌드 번호는 fastlane next_build_number가 자동 설정
         run: bundle exec fastlane beta
@@ -60,3 +67,4 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_PATH: ${{ env.ASC_KEY_PATH }}
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          DERIVED_DATA_CACHE_HIT: ${{ steps.deriveddata-cache.outputs.cache-hit }}
