@@ -2,18 +2,19 @@
 //  anyappTests.swift
 //  anyappTests
 //
-//  Created by ijaejun on 6/25/26.
-//
 
+import Foundation
 import Testing
 @testable import anyapp
 
 struct anyappTests {
+    @Test func audioFileStoreProducesUniqueM4AURLs() {
+        let first = AudioFileStore.newRecordingURL()
+        let second = AudioFileStore.newRecordingURL()
 
-    @Test func example() async throws {
-        // Write your test here and use APIs like `#expect(...)` to check expected conditions.
-        // Swift Testing Documentation
-        // https://developer.apple.com/documentation/testing
+        #expect(first.pathExtension == "m4a")
+        #expect(second.pathExtension == "m4a")
+        #expect(first != second)
+        #expect(first.deletingLastPathComponent() == AudioFileStore.documentsDirectory)
     }
-
 }

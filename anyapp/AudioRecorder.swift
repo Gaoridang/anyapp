@@ -6,6 +6,51 @@
 import AVFoundation
 import Observation
 
+protocol MicrophonePermissionProviding: Sendable {
+    var recordPermission: AVAudioApplication.recordPermission { get }
+    func requestRecordPermission() async -> Bool
+}
+
+protocol AudioSessionConfiguring: Sendable {
+    func deactivateSession() throws
+    func configureForRecording() throws
+}
+
+struct SystemMicrophonePermissionProvider: MicrophonePermissionProviding {
+    var recordPermission: AVAudioApplication.recordPermission {
+        AVAudioApplication.shared.recordPermission
+    }
+
+    func requestRecordPermission() async -> Bool {
+        await withCheckedContinuation { continuation in
+            AVAudioApplication.requestRecordPermission { granted in
+                Task { @MainActor in
+                    continuation.resume(returning: granted)
+                }
+            }
+        }
+    }
+}
+
+struct SystemAudioSessionConfigurator: AudioSessionConfiguring {
+    func deactivateSession() throws {
+        try AVAudioSession.sharedInstance().setActive(
+            false,
+            options: .notifyOthersOnDeactivation
+        )
+    }
+
+    func configureForRecording() throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(
+            .playAndRecord,
+            mode: .default,
+            options: [.defaultToSpeaker]
+        )
+        try session.setActive(true)
+    }
+}
+
 @Observable
 @MainActor
 final class AudioRecorder {
@@ -16,11 +61,39 @@ final class AudioRecorder {
         case error(String)
     }
 
+    enum RecordingError: LocalizedError, Equatable {
+        case permissionDenied
+        case notPrepared
+        case failedToStart
+
+        var errorDescription: String? {
+            switch self {
+            case .permissionDenied:
+                "마이크 권한이 필요합니다. 설정에서 허용해 주세요."
+            case .notPrepared:
+                "녹음을 준비하는 중입니다. 잠시 후 다시 시도해 주세요."
+            case .failedToStart:
+                "녹음을 시작할 수 없습니다."
+            }
+        }
+    }
+
     private(set) var state: State = .idle
     private(set) var elapsedTime: TimeInterval = 0
+    private(set) var isPrepared = false
 
+    private let permissionProvider: any MicrophonePermissionProviding
+    private let sessionConfigurator: any AudioSessionConfiguring
     private var recorder: AVAudioRecorder?
-    private var timer: Timer?
+    private var tickTask: Task<Void, Never>?
+
+    init(
+        permissionProvider: any MicrophonePermissionProviding = SystemMicrophonePermissionProvider(),
+        sessionConfigurator: any AudioSessionConfiguring = SystemAudioSessionConfigurator()
+    ) {
+        self.permissionProvider = permissionProvider
+        self.sessionConfigurator = sessionConfigurator
+    }
 
     var isRecording: Bool {
         if case .recording = state { return true }
@@ -28,23 +101,39 @@ final class AudioRecorder {
     }
 
     var canRecord: Bool {
-        switch state {
-        case .permissionDenied, .error:
-            return false
-        default:
-            return true
-        }
+        isPrepared && permissionProvider.recordPermission == .granted
+    }
+
+    var lastErrorMessage: String? {
+        if case .error(let message) = state { return message }
+        return nil
     }
 
     func prepare() async {
-        let granted = await requestPermission()
+        let granted = await permissionProvider.requestRecordPermission()
+        isPrepared = true
         state = granted ? .idle : .permissionDenied
     }
 
     func startRecording(to url: URL) throws {
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
-        try session.setActive(true)
+        guard isPrepared else {
+            throw RecordingError.notPrepared
+        }
+
+        guard permissionProvider.recordPermission == .granted else {
+            state = .permissionDenied
+            throw RecordingError.permissionDenied
+        }
+
+        clearErrorState()
+
+        do {
+            try sessionConfigurator.deactivateSession()
+            try sessionConfigurator.configureForRecording()
+        } catch {
+            state = .error("오디오 세션을 설정할 수 없습니다.")
+            throw error
+        }
 
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
@@ -53,55 +142,61 @@ final class AudioRecorder {
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
         ]
 
-        recorder = try AVAudioRecorder(url: url, settings: settings)
+        do {
+            recorder = try AVAudioRecorder(url: url, settings: settings)
+        } catch {
+            state = .error("녹음 장치를 초기화할 수 없습니다.")
+            throw error
+        }
+
         recorder?.isMeteringEnabled = false
         recorder?.prepareToRecord()
 
         guard recorder?.record() == true else {
-            state = .error("녹음을 시작할 수 없습니다.")
+            recorder = nil
+            state = .error(RecordingError.failedToStart.errorDescription ?? "녹음을 시작할 수 없습니다.")
             throw RecordingError.failedToStart
         }
 
         elapsedTime = 0
         state = .recording
-        startTimer()
+        startElapsedTimer()
     }
 
     func stopRecording() -> TimeInterval? {
         guard isRecording else { return nil }
 
-        timer?.invalidate()
-        timer = nil
+        stopElapsedTimer()
 
         recorder?.stop()
         let duration = recorder?.currentTime ?? elapsedTime
         recorder = nil
 
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        try? sessionConfigurator.deactivateSession()
         state = .idle
 
         return duration > 0 ? duration : nil
     }
 
-    private func requestPermission() async -> Bool {
-        await withCheckedContinuation { continuation in
-            AVAudioApplication.requestRecordPermission { granted in
-                continuation.resume(returning: granted)
-            }
-        }
-    }
-
-    private func startTimer() {
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            Task { @MainActor in
+    private func startElapsedTimer() {
+        stopElapsedTimer()
+        tickTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(100))
+                guard let self, self.isRecording else { break }
                 self.elapsedTime = self.recorder?.currentTime ?? self.elapsedTime
             }
         }
     }
 
-    enum RecordingError: Error {
-        case failedToStart
+    private func stopElapsedTimer() {
+        tickTask?.cancel()
+        tickTask = nil
+    }
+
+    func clearErrorState() {
+        if case .error = state {
+            state = .idle
+        }
     }
 }

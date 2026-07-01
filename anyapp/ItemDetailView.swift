@@ -19,6 +19,8 @@ struct ItemDetailView: View {
     @State private var showSaveConfirmation = false
     @State private var saveErrorMessage: String?
     @State private var transcriptionErrorMessage: String?
+    @State private var recordingErrorMessage: String?
+    @State private var isRecorderReady = false
     @State private var processingStatus: ProcessingStatus?
     @FocusState private var isTextFieldFocused: Bool
 
@@ -59,10 +61,6 @@ struct ItemDetailView: View {
             .frame(maxWidth: .infinity)
         }
         .scrollDismissesKeyboard(.interactively)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            isTextFieldFocused = false
-        }
         .simultaneousGesture(
             DragGesture(minimumDistance: 20)
                 .onEnded { value in
@@ -76,6 +74,13 @@ struct ItemDetailView: View {
         .overlay(alignment: .bottom) {
             if case .permissionDenied = recorder.state {
                 Text("마이크를 사용할 수 없습니다.\n아래 입력창으로 메모를 작성하세요.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                    .padding(.bottom, 100)
+            } else if let recordingErrorMessage {
+                Text(recordingErrorMessage)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -112,10 +117,20 @@ struct ItemDetailView: View {
                     .padding(.vertical, 8)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
                     .padding(.top, 8)
+            } else if case .error(let message) = recorder.state {
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    .padding(.top, 8)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: showSaveConfirmation)
         .animation(.easeInOut(duration: 0.2), value: transcriptionErrorMessage)
+        .animation(.easeInOut(duration: 0.2), value: recordingErrorMessage)
         .alert("저장 실패", isPresented: Binding(
             get: { saveErrorMessage != nil },
             set: { if !$0 { saveErrorMessage = nil } }
@@ -126,6 +141,7 @@ struct ItemDetailView: View {
         }
         .task {
             await recorder.prepare()
+            isRecorderReady = true
             _ = await SpeechTranscriber.requestAuthorization()
         }
         .onChange(of: draftText) {
@@ -159,8 +175,8 @@ struct ItemDetailView: View {
                 .shadow(color: .black.opacity(0.06), radius: 8, y: 3)
         }
         .buttonStyle(.plain)
-        .disabled(!recorder.canRecord || processingStatus != nil)
-        .opacity(recorder.canRecord && processingStatus == nil ? 1 : 0.45)
+        .disabled(!isRecorderReady || !recorder.canRecord || processingStatus != nil)
+        .opacity(isRecorderReady && recorder.canRecord && processingStatus == nil ? 1 : 0.45)
         .animation(.easeInOut(duration: 0.2), value: recorder.isRecording)
     }
 
@@ -235,6 +251,8 @@ struct ItemDetailView: View {
             return
         }
 
+        recordingErrorMessage = nil
+        recorder.clearErrorState()
         stopPlayback()
         item.deleteAudioFile()
 
@@ -246,6 +264,14 @@ struct ItemDetailView: View {
         } catch {
             pendingRecordingFileName = nil
             try? FileManager.default.removeItem(at: url)
+            let message = (error as? LocalizedError)?.errorDescription
+                ?? recorder.lastErrorMessage
+                ?? "녹음을 시작할 수 없습니다."
+            recordingErrorMessage = message
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                recordingErrorMessage = nil
+            }
         }
     }
 
@@ -262,6 +288,11 @@ struct ItemDetailView: View {
         } else if let fileName = pendingRecordingFileName {
             let url = AudioFileStore.documentsDirectory.appendingPathComponent(fileName)
             try? FileManager.default.removeItem(at: url)
+            recordingErrorMessage = "녹음된 오디오가 없습니다. 다시 시도해 주세요."
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                recordingErrorMessage = nil
+            }
         }
 
         pendingRecordingFileName = nil
@@ -361,6 +392,7 @@ struct ItemDetailView: View {
         player?.stop()
         player = nil
         isPlaying = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     private func formattedDuration(_ duration: TimeInterval) -> String {
