@@ -1,0 +1,29 @@
+---
+description: anyapp iOS/SwiftUI conventions and git workflow
+alwaysApply: true
+---
+
+# anyapp — Project Conventions
+
+## Platform
+- This app is **iOS + SwiftUI only**. Do not add macOS, watchOS, UIKit views, or cross-platform abstractions unless explicitly requested.
+
+## Swift & SwiftUI
+- Use the **latest Swift grammar** and modern SwiftUI APIs.
+- Prefer SwiftData for persistence (existing pattern in `anyapp/Item.swift`).
+- Match existing project structure: app target lives under `anyapp/`.
+
+## Git workflow
+- **One branch per function/feature** — do not mix unrelated changes on the same branch.
+- **Commit as you work** on each branch; do not leave large uncommitted chunks at the end.
+- Use descriptive branch names (e.g. `cursor/recording-ui-3cf7` for agent work).
+
+## App context
+- **Plus button** (toolbar in `ContentView`) creates a new `Item`.
+- **Item detail view** (currently inline `NavigationLink` destination in `ContentView`) is where features like recording belong.
+- Planned direction: recording in item detail as a notebook for thoughts (not yet implemented).
+
+## Key files
+- [`anyapp/ContentView.swift`](anyapp/ContentView.swift) — list, plus button, item detail
+- [`anyapp/Item.swift`](anyapp/Item.swift) — SwiftData model
+- [`anyapp/anyappApp.swift`](anyapp/anyappApp.swift) — app entry + model container
