@@ -21,6 +21,8 @@ check "workflow has workflow_dispatch" "grep -q 'workflow_dispatch' .github/work
 check "workflow uses write_asc_api_key script" "grep -q 'scripts/write_asc_api_key.sh' .github/workflows/testflight.yml"
 check "fastlane beta lane exists" "grep -q 'lane :beta' fastlane/Fastfile"
 check "fastlane passes xcode auth via xcargs" "grep -q 'authenticationKeyPath' fastlane/Fastfile"
+check "export compliance configured" "grep -q 'ITSAppUsesNonExemptEncryption' anyapp.xcodeproj/project.pbxproj"
+check "fastlane sets encryption compliance" "grep -q 'uses_non_exempt_encryption: false' fastlane/Fastfile"
 check "bundle id configured" "grep -q 'com.ijaejun.anyapp' fastlane/Appfile"
 check "team id configured" "grep -q 'T5CBR768BM' fastlane/Appfile"
 check "Gemfile.lock present" "test -f Gemfile.lock"
