@@ -25,7 +25,7 @@ platform :ios do
     )
   end
 
-  # 만료·CI 잉여 Development 인증서를 정리해 Apple 계정 한도(3개)를 확보합니다.
+  # 만료·CI 잉여 인증서를 정리해 Apple 계정 한도(3개)를 확보합니다.
   private_lane :prune_certificates do
     Spaceship::ConnectAPI.token = connect_api_token
 
@@ -40,38 +40,39 @@ platform :ios do
     end
 
     if ENV["CI"]
-      development_certs = Spaceship::ConnectAPI::Certificate.all.select do |certificate|
-        certificate.certificate_type == "IOS_DEVELOPMENT"
-      end
-
-      if development_certs.length > 1
-        development_certs
-          .sort_by { |certificate| Time.parse(certificate.expiration_date.to_s) }
-          .first(development_certs.length - 1)
-          .each do |certificate|
-            UI.message("Revoking excess CI development certificate: #{certificate.display_name} (#{certificate.id})")
-            certificate.delete!
-          end
+      %w[IOS_DEVELOPMENT IOS_DISTRIBUTION].each do |certificate_type|
+        Spaceship::ConnectAPI::Certificate.all.select do |certificate|
+          certificate.certificate_type == certificate_type
+        end.each do |certificate|
+          UI.message("Revoking CI #{certificate_type} certificate: #{certificate.display_name} (#{certificate.id})")
+          certificate.delete!
+        end
       end
     end
+  end
+
+  private_lane :install_wwdr_certificate do
+    wwdr_path = "/tmp/AppleWWDRCAG4.cer"
+    sh("curl -sf https://www.apple.com/certificateauthority/AppleWWDRCAG4.cer -o #{wwdr_path}")
+    import_certificate(
+      certificate_path: wwdr_path,
+      keychain_path: ENV.fetch("KEYCHAIN_PATH"),
+      keychain_password: ENV.fetch("KEYCHAIN_PASSWORD")
+    )
   end
 
   private_lane :setup_distribution_signing do |options|
     api_key = options[:api_key]
 
     prune_certificates
+    install_wwdr_certificate
 
-    begin
-      cert(api_key: api_key, force: false)
-    rescue StandardError => e
-      UI.important("Distribution certificate setup failed, retrying with force: #{e.message}")
-      cert(api_key: api_key, force: true)
-    end
+    cert(api_key: api_key, force: false)
 
     sigh(
       api_key: api_key,
       app_identifier: "com.ijaejun.anyapp",
-      force: false
+      force: true
     )
 
     profile_name = lane_context[SharedValues::SIGH_NAME]
