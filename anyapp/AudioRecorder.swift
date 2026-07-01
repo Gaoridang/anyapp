@@ -208,8 +208,9 @@ final class AudioRecorder {
 
         stopElapsedTimer()
 
+        // AVAudioRecorder.currentTime resets to 0 after stop(), so capture first.
+        let duration = max(recorder?.currentTime ?? 0, elapsedTime)
         recorder?.stop()
-        let duration = recorder?.currentTime ?? elapsedTime
         recorder = nil
 
         try? sessionConfigurator.deactivateSession()
