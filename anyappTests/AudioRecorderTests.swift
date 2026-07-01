@@ -31,7 +31,7 @@ private final class MockSessionConfigurator: AudioSessionConfiguring, @unchecked
     var configureCallCount = 0
     var configureError: Error?
 
-    func deactivateSession() {
+    func deactivateSession() throws {
         deactivateCallCount += 1
     }
 
@@ -41,8 +41,6 @@ private final class MockSessionConfigurator: AudioSessionConfiguring, @unchecked
             throw configureError
         }
     }
-
-    func configureForPlayback() throws {}
 }
 
 private final class MockRecordingCapture: RecordingCapturing, @unchecked Sendable {

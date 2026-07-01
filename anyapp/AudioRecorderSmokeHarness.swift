@@ -23,7 +23,7 @@ private final class SmokeSessionConfigurator: AudioSessionConfiguring, @unchecke
     var configureCallCount = 0
     var deactivateCallCount = 0
 
-    func deactivateSession() {
+    func deactivateSession() throws {
         deactivateCallCount += 1
     }
 

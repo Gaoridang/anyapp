@@ -12,9 +12,13 @@ protocol MicrophonePermissionProviding: Sendable {
 }
 
 protocol AudioSessionConfiguring: Sendable {
-    func deactivateSession()
+    func deactivateSession() throws
     func configureForRecording() throws
     func configureForPlayback() throws
+}
+
+extension AudioSessionConfiguring {
+    func configureForPlayback() throws {}
 }
 
 protocol RecordingCapturing: AnyObject {
@@ -44,7 +48,7 @@ struct SystemMicrophonePermissionProvider: MicrophonePermissionProviding {
 }
 
 struct SystemAudioSessionConfigurator: AudioSessionConfiguring {
-    func deactivateSession() {
+    func deactivateSession() throws {
         try? AVAudioSession.sharedInstance().setActive(
             false,
             options: .notifyOthersOnDeactivation
@@ -52,7 +56,7 @@ struct SystemAudioSessionConfigurator: AudioSessionConfiguring {
     }
 
     func configureForRecording() throws {
-        deactivateSession()
+        try? deactivateSession()
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(
             .playAndRecord,
@@ -63,7 +67,7 @@ struct SystemAudioSessionConfigurator: AudioSessionConfiguring {
     }
 
     func configureForPlayback() throws {
-        deactivateSession()
+        try? deactivateSession()
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .default)
         try session.setActive(true)
@@ -190,7 +194,7 @@ final class AudioRecorder {
     }
 
     func deactivatePlaybackSession() {
-        sessionConfigurator.deactivateSession()
+        try? sessionConfigurator.deactivateSession()
     }
 
     func startRecording(to url: URL) throws {
@@ -215,7 +219,7 @@ final class AudioRecorder {
         do {
             recorder = try captureMaker.makeRecorder(url: url, settings: Self.recordingSettings)
         } catch {
-            sessionConfigurator.deactivateSession()
+            try? sessionConfigurator.deactivateSession()
             state = .error("녹음 장치를 초기화할 수 없습니다.")
             throw error
         }
@@ -224,14 +228,14 @@ final class AudioRecorder {
 
         guard recorder?.prepareToRecord() == true else {
             recorder = nil
-            sessionConfigurator.deactivateSession()
+            try? sessionConfigurator.deactivateSession()
             state = .error(RecordingError.failedToStart.errorDescription ?? "녹음을 시작할 수 없습니다.")
             throw RecordingError.failedToStart
         }
 
         guard recorder?.record() == true else {
             recorder = nil
-            sessionConfigurator.deactivateSession()
+            try? sessionConfigurator.deactivateSession()
             state = .error(RecordingError.failedToStart.errorDescription ?? "녹음을 시작할 수 없습니다.")
             throw RecordingError.failedToStart
         }
@@ -250,7 +254,7 @@ final class AudioRecorder {
         let duration = recorder?.currentTime ?? elapsedTime
         recorder = nil
 
-        sessionConfigurator.deactivateSession()
+        try? sessionConfigurator.deactivateSession()
         state = .idle
 
         return duration > 0 ? duration : nil

@@ -270,7 +270,13 @@ struct ItemDetailView: View {
         Task { @MainActor in
             if !recorder.canRecord {
                 await recorder.prepare()
-                guard recorder.canRecord else { return }
+                guard recorder.canRecord else {
+                    recordingErrorMessage = recorder.lastErrorMessage
+                        ?? "마이크 권한이 필요합니다. 설정에서 허용해 주세요."
+                    try? await Task.sleep(for: .seconds(3))
+                    recordingErrorMessage = nil
+                    return
+                }
             }
 
             recordingErrorMessage = nil
