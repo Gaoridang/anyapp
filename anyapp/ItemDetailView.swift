@@ -303,33 +303,24 @@ struct ItemDetailView: View {
     }
 
     private func finishRecordingIfNeeded() {
-        guard recorder.isRecording else { return }
+        let result = RecordingFinishCoordinator.finish(
+            recorder: recorder,
+            item: item,
+            pendingFileName: pendingRecordingFileName
+        )
 
-        var savedURL: URL?
+        pendingRecordingFileName = nil
 
-        if let duration = recorder.stopRecording(),
-           let saved = RecordingPersistence.persistStoppedRecording(
-               on: item,
-               pendingFileName: pendingRecordingFileName,
-               duration: duration
-           ) {
-            savedURL = saved
+        if let savedURL = result.savedURL {
             try? modelContext.save()
-        } else if let fileName = pendingRecordingFileName {
-            let url = AudioFileStore.documentsDirectory.appendingPathComponent(fileName)
-            try? FileManager.default.removeItem(at: url)
-            recordingErrorMessage = "녹음된 오디오가 없습니다. 다시 시도해 주세요."
+            transcriptionTask?.cancel()
+            transcriptionTask = Task { await processTranscription(from: savedURL) }
+        } else if let errorMessage = result.errorMessage {
+            recordingErrorMessage = errorMessage
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(3))
                 recordingErrorMessage = nil
             }
-        }
-
-        pendingRecordingFileName = nil
-
-        if let savedURL {
-            transcriptionTask?.cancel()
-            transcriptionTask = Task { await processTranscription(from: savedURL) }
         }
     }
 
