@@ -43,7 +43,7 @@ struct ItemDetailView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemGroupedBackground))
-        .navigationTitle(item.timestamp, format: .dateTime.day().month().year().hour().minute())
+        .navigationTitle(item.timestamp.formatted(.dateTime.day().month().year().hour().minute()))
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             inputToolbar
