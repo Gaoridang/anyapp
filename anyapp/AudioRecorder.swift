@@ -252,10 +252,10 @@ final class AudioRecorder {
 
         stopElapsedTimer()
 
+        // AVAudioRecorder.currentTime resets to 0 after stop(), so capture before stop().
         let wallClockDuration = recordingStartedAt.map { Date().timeIntervalSince($0) } ?? 0
-        let capturedDuration = max(recorder?.currentTime ?? 0, elapsedTime, wallClockDuration)
+        let duration = max(recorder?.currentTime ?? 0, elapsedTime, wallClockDuration)
         recorder?.stop()
-        let duration = max(capturedDuration, recorder?.currentTime ?? 0)
         recorder = nil
         recordingStartedAt = nil
 

@@ -63,6 +63,7 @@ private final class MockRecordingCapture: RecordingCapturing, @unchecked Sendabl
 
     func stop() {
         didStop = true
+        currentTime = 0
     }
 }
 
@@ -212,7 +213,29 @@ struct AudioRecorderTests {
         #expect(recorder.state == .idle)
         #expect(!recorder.isRecording)
         #expect(captureMaker.lastCapture?.didStop == true)
+        #expect(captureMaker.lastCapture?.currentTime == 0)
         #expect(session.deactivateCallCount >= 1)
+    }
+
+    @Test func stopRecordingFallsBackToElapsedTimeWhenCaptureTimeIsZero() async throws {
+        let permission = MockPermissionProvider(recordPermission: .granted, requestResult: true)
+        let captureMaker = MockRecordingCaptureMaker()
+        let recorder = AudioRecorder(
+            permissionProvider: permission,
+            captureMaker: captureMaker
+        )
+
+        await recorder.prepare()
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).m4a")
+        try recorder.startRecording(to: url)
+
+        captureMaker.lastCapture?.currentTime = 1.8
+        try await Task.sleep(for: .milliseconds(200))
+        captureMaker.lastCapture?.currentTime = 0
+
+        let duration = recorder.stopRecording()
+
+        #expect(duration == 1.8)
     }
 
     @Test func stopRecordingWhenIdleReturnsNil() async {
