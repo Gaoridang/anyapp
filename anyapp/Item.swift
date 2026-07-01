@@ -31,5 +31,3 @@ final class Item {
         audioDuration = nil
     }
 }
-
-extension Item: RecordingFinishItem {}

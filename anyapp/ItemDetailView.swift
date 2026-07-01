@@ -11,7 +11,12 @@ struct ItemDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @Bindable var item: Item
-    @State private var recorder = AudioRecorder()
+    @State private var recorder: AudioRecorder
+
+    init(item: Item, injectedRecorder: AudioRecorder? = nil) {
+        self.item = item
+        _recorder = State(initialValue: injectedRecorder ?? AudioRecorder())
+    }
     @State private var player: AVAudioPlayer?
     @State private var isPlaying = false
     @State private var pendingRecordingFileName: String?
@@ -164,6 +169,13 @@ struct ItemDetailView: View {
                 try? modelContext.save()
             }
         }
+        #if DEBUG
+        .task(id: ProcessInfo.processInfo.environment["FINISH_SMOKE"]) {
+            if let mode = ProcessInfo.processInfo.environment["FINISH_SMOKE"] {
+                await runIntegratedFinishSmoke(mode: mode)
+            }
+        }
+        #endif
     }
 
     private var micButton: some View {
@@ -303,24 +315,105 @@ struct ItemDetailView: View {
     }
 
     private func finishRecordingIfNeeded() {
-        let result = ItemDetailRecordingFinish.finishRecordingIfNeeded(
-            recorder: recorder,
-            item: item,
-            pendingFileName: &pendingRecordingFileName
-        )
+        fputs("ItemDetailView.finishRecordingIfNeeded: entered isRecording=\(recorder.isRecording)\n", stderr)
+        fflush(stderr)
 
-        if let savedURL = result.savedURL {
+        guard recorder.isRecording else { return }
+
+        let pending = pendingRecordingFileName
+        pendingRecordingFileName = nil
+
+        let duration = recorder.stopRecording()
+        if let duration, duration > 0, let pending {
+            item.audioFileName = pending
+            item.audioDuration = duration
+            fputs(
+                "ItemDetailView.finishRecordingIfNeeded: persisted fileName=\(pending) duration=\(duration)\n",
+                stderr
+            )
+            fflush(stderr)
             try? modelContext.save()
-            transcriptionTask?.cancel()
-            transcriptionTask = Task { await processTranscription(from: savedURL) }
-        } else if let errorMessage = result.errorMessage {
-            recordingErrorMessage = errorMessage
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(3))
-                recordingErrorMessage = nil
+
+            let isSmoke = ProcessInfo.processInfo.environment["FINISH_SMOKE"] != nil
+            if !isSmoke, let savedURL = item.audioFileURL {
+                transcriptionTask?.cancel()
+                transcriptionTask = Task { await processTranscription(from: savedURL) }
+            }
+        } else if let fileName = pending {
+            let url = AudioFileStore.documentsDirectory.appendingPathComponent(fileName)
+            try? FileManager.default.removeItem(at: url)
+            fputs("ItemDetailView.finishRecordingIfNeeded: empty recording file=\(fileName)\n", stderr)
+            fflush(stderr)
+            recordingErrorMessage = "녹음된 오디오가 없습니다. 다시 시도해 주세요."
+            if ProcessInfo.processInfo.environment["FINISH_SMOKE"] == nil {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(3))
+                    recordingErrorMessage = nil
+                }
             }
         }
     }
+
+    #if DEBUG
+    private func runIntegratedFinishSmoke(mode: String) async {
+        if mode != "mock" {
+            await recorder.prepare()
+            guard recorder.canRecord else {
+                fputs("INTEGRATED_SKIP: microphone permission not granted\n", stderr)
+                fflush(stderr)
+                exit(0)
+            }
+        } else {
+            await recorder.prepare()
+        }
+
+        let url = AudioFileStore.newRecordingURL()
+        pendingRecordingFileName = url.lastPathComponent
+
+        do {
+            try recorder.startRecording(to: url)
+        } catch {
+            fputs("FAIL: startRecording \(error)\n", stderr)
+            fflush(stderr)
+            exit(1)
+        }
+
+        fputs("start: state=\(recorder.state) isRecording=\(recorder.isRecording)\n", stderr)
+        fflush(stderr)
+
+        guard recorder.isRecording else {
+            fputs("FAIL: expected .recording after start\n", stderr)
+            fflush(stderr)
+            exit(1)
+        }
+
+        let sleepMs: UInt64 = mode == "live" ? 500 : 150
+        try? await Task.sleep(for: .milliseconds(sleepMs))
+
+        finishRecordingIfNeeded()
+
+        if let fileName = item.audioFileName,
+           let duration = item.audioDuration, duration > 0 {
+            var pass = true
+            if mode == "live" {
+                let exists = FileManager.default.fileExists(atPath: url.path)
+                let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? UInt64) ?? 0
+                fputs("live-check: exists=\(exists) size=\(size)\n", stderr)
+                fflush(stderr)
+                pass = exists && size > 0
+            }
+            if pass {
+                fputs(mode == "live" ? "LIVE_INTEGRATED_PASS\n" : "INTEGRATED_PASS\n", stderr)
+                fflush(stderr)
+                exit(0)
+            }
+        }
+
+        fputs("FAIL: integrated smoke persist\n", stderr)
+        fflush(stderr)
+        exit(1)
+    }
+    #endif
 
     private func processTranscription(from url: URL) async {
         guard !Task.isCancelled else { return }
@@ -437,6 +530,37 @@ struct ItemDetailView: View {
         return String(format: "%d:%02d", minutes, seconds)
     }
 }
+
+#if DEBUG
+final class FinishSmokePermissionProvider: MicrophonePermissionProviding, @unchecked Sendable {
+    var recordPermission: AVAudioApplication.recordPermission = .granted
+
+    func requestRecordPermission() async -> Bool {
+        recordPermission = .granted
+        return true
+    }
+}
+
+final class FinishSmokeSessionConfigurator: AudioSessionConfiguring, @unchecked Sendable {
+    func deactivateSession() throws {}
+    func configureForRecording() throws {}
+}
+
+final class FinishSmokeCapture: RecordingCapturing, @unchecked Sendable {
+    var currentTime: TimeInterval = 0
+    var isMeteringEnabled = false
+
+    func prepareToRecord() -> Bool { true }
+    func record() -> Bool { true }
+    func stop() {}
+}
+
+final class FinishSmokeCaptureMaker: RecordingCaptureMaking, @unchecked Sendable {
+    func makeRecorder(url: URL, settings: [String: Any]) throws -> any RecordingCapturing {
+        FinishSmokeCapture()
+    }
+}
+#endif
 
 #Preview {
     NavigationStack {

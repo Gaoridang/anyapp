@@ -2,18 +2,13 @@
 //  AudioRecorderSmokeHarness.swift
 //  anyapp
 //
-//  Scratch-only smoke (`swiftc -DSMOKE_RUNNER`). Exercises ItemDetailRecordingFinish.finishRecordingIfNeeded.
+//  Scratch-only AudioRecorder API smoke (`swiftc -DSMOKE_RUNNER`). No View/persist path.
 //
 
 import AVFoundation
 import Foundation
 
 #if SMOKE_RUNNER
-private final class SmokeFinishItem: RecordingFinishItem, @unchecked Sendable {
-    var audioFileName: String?
-    var audioDuration: TimeInterval?
-}
-
 private final class SmokePermissionProvider: MicrophonePermissionProviding, @unchecked Sendable {
     var recordPermission: AVAudioApplication.recordPermission = .granted
 
@@ -29,7 +24,7 @@ private final class SmokeSessionConfigurator: AudioSessionConfiguring, @unchecke
 }
 
 private final class SmokeCapture: RecordingCapturing, @unchecked Sendable {
-    var currentTime: TimeInterval = 0
+    var currentTime: TimeInterval = 1.25
     var isMeteringEnabled = false
 
     func prepareToRecord() -> Bool { true }
@@ -43,11 +38,10 @@ private final class SmokeCaptureMaker: RecordingCaptureMaking, @unchecked Sendab
     }
 }
 
-enum IntegratedSmokeHarness {
+enum RecorderAPISmokeHarness {
     @MainActor
-    static func runMockIntegrated() async -> String {
+    static func run() async -> String {
         var lines: [String] = []
-        let item = SmokeFinishItem()
         let recorder = AudioRecorder(
             permissionProvider: SmokePermissionProvider(),
             sessionConfigurator: SmokeSessionConfigurator(),
@@ -55,8 +49,8 @@ enum IntegratedSmokeHarness {
         )
 
         await recorder.prepare()
-        var pendingFileName: String? = "\(UUID().uuidString).m4a"
-        let url = AudioFileStore.documentsDirectory.appendingPathComponent(pendingFileName!)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).m4a")
 
         do {
             try recorder.startRecording(to: url)
@@ -67,27 +61,17 @@ enum IntegratedSmokeHarness {
 
         lines.append("start: state=\(recorder.state) isRecording=\(recorder.isRecording)")
         guard recorder.isRecording else {
-            lines.append("FAIL: expected .recording after start")
+            lines.append("FAIL: expected .recording")
             return lines.joined(separator: "\n")
         }
 
-        try? await Task.sleep(for: .milliseconds(150))
+        let duration = recorder.stopRecording()
+        lines.append("stop: duration=\(duration.map(String.init(describing:)) ?? "nil") state=\(recorder.state)")
 
-        let result = ItemDetailRecordingFinish.finishRecordingIfNeeded(
-            recorder: recorder,
-            item: item,
-            pendingFileName: &pendingFileName
-        )
-
-        lines.append("finishRecordingIfNeeded: savedURL=\(result.savedURL?.lastPathComponent ?? "nil") fileName=\(item.audioFileName ?? "nil") duration=\(item.audioDuration.map(String.init(describing:)) ?? "nil") pendingCleared=\(pendingFileName == nil)")
-
-        if result.savedURL != nil,
-           item.audioFileName != nil,
-           let duration = item.audioDuration, duration > 0,
-           pendingFileName == nil {
-            lines.append("INTEGRATED_PASS")
+        if let duration, duration > 0, recorder.state == .idle {
+            lines.append("RECORDER_API_PASS")
         } else {
-            lines.append("FAIL: finishRecordingIfNeeded persist")
+            lines.append("FAIL: recorder stop")
         }
 
         return lines.joined(separator: "\n")
@@ -97,10 +81,10 @@ enum IntegratedSmokeHarness {
 @main
 struct SmokeRunner {
     static func main() async {
-        let output = await IntegratedSmokeHarness.runMockIntegrated()
+        let output = await RecorderAPISmokeHarness.run()
         print(output)
         fputs(output + "\n", stderr)
-        exit(output.contains("INTEGRATED_PASS") ? 0 : 1)
+        exit(output.contains("RECORDER_API_PASS") ? 0 : 1)
     }
 }
 #endif
