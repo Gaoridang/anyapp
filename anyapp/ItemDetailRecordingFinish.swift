@@ -1,6 +1,8 @@
 //
-//  RecordingFinishCoordinator.swift
+//  ItemDetailRecordingFinish.swift
 //  anyapp
+//
+//  Shipped stop→persist path invoked by ItemDetailView.finishRecordingIfNeeded().
 //
 
 import Foundation
@@ -18,30 +20,33 @@ extension RecordingFinishItem {
 }
 
 @MainActor
-enum RecordingFinishCoordinator {
+enum ItemDetailRecordingFinish {
     struct FinishResult {
         let savedURL: URL?
         let errorMessage: String?
     }
 
-    /// Stops an active recording and persists audio metadata on the item.
-    static func finish(
+    /// Shipped implementation backing `ItemDetailView.finishRecordingIfNeeded()`.
+    static func finishRecordingIfNeeded(
         recorder: AudioRecorder,
         item: some RecordingFinishItem,
-        pendingFileName: String?
+        pendingFileName: inout String?
     ) -> FinishResult {
         guard recorder.isRecording else {
             return FinishResult(savedURL: nil, errorMessage: nil)
         }
 
+        let pending = pendingFileName
+        pendingFileName = nil
+
         let duration = recorder.stopRecording()
-        if let duration, duration > 0, let pendingFileName {
-            item.audioFileName = pendingFileName
+        if let duration, duration > 0, let pending {
+            item.audioFileName = pending
             item.audioDuration = duration
             return FinishResult(savedURL: item.audioFileURL, errorMessage: nil)
         }
 
-        if let fileName = pendingFileName {
+        if let fileName = pending {
             let url = AudioFileStore.documentsDirectory.appendingPathComponent(fileName)
             try? FileManager.default.removeItem(at: url)
             return FinishResult(

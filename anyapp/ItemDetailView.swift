@@ -303,13 +303,11 @@ struct ItemDetailView: View {
     }
 
     private func finishRecordingIfNeeded() {
-        let result = RecordingFinishCoordinator.finish(
+        let result = ItemDetailRecordingFinish.finishRecordingIfNeeded(
             recorder: recorder,
             item: item,
-            pendingFileName: pendingRecordingFileName
+            pendingFileName: &pendingRecordingFileName
         )
-
-        pendingRecordingFileName = nil
 
         if let savedURL = result.savedURL {
             try? modelContext.save()
