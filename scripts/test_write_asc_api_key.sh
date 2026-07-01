@@ -51,4 +51,38 @@ if [[ "$OUTPUT2" != "ASC_KEY_PATH=$EXPECTED_PATH2" ]]; then
   exit 1
 fi
 
+# DER path (base64 of raw PKCS#8 bytes without PEM headers)
+DER_PATH="$SCRATCH/key.der"
+openssl pkcs8 -topk8 -nocrypt -in "$SCRATCH/source.pem" -outform DER -out "$DER_PATH"
+DER_B64="$(base64 -i "$DER_PATH" | tr -d '[:space:]')"
+OUTPUT_DER="$(
+  ASC_KEY_ID="$TEST_KEY_ID" \
+  ASC_KEY_CONTENT_BASE64="$DER_B64" \
+  ASC_KEY_DIR="$SCRATCH/keys_der" \
+  "$ROOT/scripts/write_asc_api_key.sh"
+)"
+EXPECTED_DER_PATH="$SCRATCH/keys_der/AuthKey_${TEST_KEY_ID}.p8"
+if [[ "$OUTPUT_DER" != "ASC_KEY_PATH=$EXPECTED_DER_PATH" ]]; then
+  echo "DER decode failed: $OUTPUT_DER" >&2
+  exit 1
+fi
+if ! grep -Eq "BEGIN (EC )?PRIVATE KEY" "$EXPECTED_DER_PATH"; then
+  echo "DER input was not normalized to PEM." >&2
+  exit 1
+fi
+
+# Raw PEM path (users sometimes store PEM directly in the secret)
+RAW_PEM="$(cat "$SCRATCH/AuthKey_${TEST_KEY_ID}.p8")"
+OUTPUT3="$(
+  ASC_KEY_ID="$TEST_KEY_ID" \
+  ASC_KEY_CONTENT_BASE64="$RAW_PEM" \
+  ASC_KEY_DIR="$SCRATCH/keys3" \
+  "$ROOT/scripts/write_asc_api_key.sh"
+)"
+EXPECTED_PATH3="$SCRATCH/keys3/AuthKey_${TEST_KEY_ID}.p8"
+if [[ "$OUTPUT3" != "ASC_KEY_PATH=$EXPECTED_PATH3" ]]; then
+  echo "Raw PEM input failed: $OUTPUT3" >&2
+  exit 1
+fi
+
 echo "write_asc_api_key.sh tests passed."
