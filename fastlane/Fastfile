@@ -59,14 +59,8 @@ platform :ios do
       xcodeproj: "anyapp.xcodeproj"
     )
 
-    xcode_auth_args = [
-      "-allowProvisioningUpdates",
-      "-authenticationKeyPath", ENV.fetch("ASC_KEY_PATH"),
-      "-authenticationKeyID", ENV.fetch("ASC_KEY_ID"),
-      "-authenticationKeyIssuerID", ENV.fetch("ASC_ISSUER_ID")
-    ].join(" ")
-
     build_options = {
+      api_key: api_key,
       scheme: "anyapp",
       project: "anyapp.xcodeproj",
       configuration: "Release",
@@ -74,7 +68,7 @@ platform :ios do
       output_directory: "./build",
       output_name: "anyapp.ipa",
       include_bitcode: false,
-      xcargs: xcode_auth_args
+      xcargs: "-allowProvisioningUpdates"
     }
 
     if ENV["PROVISIONING_PROFILE_NAME"]
