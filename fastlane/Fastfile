@@ -39,21 +39,21 @@ platform :ios do
       certificate.delete!
     end
 
-    return unless ENV["CI"]
-
-    development_certs = Spaceship::ConnectAPI::Certificate.all.select do |certificate|
-      certificate.certificate_type == "IOS_DEVELOPMENT"
-    end
-
-    return if development_certs.length <= 1
-
-    development_certs
-      .sort_by { |certificate| Time.parse(certificate.expiration_date.to_s) }
-      .first(development_certs.length - 1)
-      .each do |certificate|
-        UI.message("Revoking excess CI development certificate: #{certificate.display_name} (#{certificate.id})")
-        certificate.delete!
+    if ENV["CI"]
+      development_certs = Spaceship::ConnectAPI::Certificate.all.select do |certificate|
+        certificate.certificate_type == "IOS_DEVELOPMENT"
       end
+
+      if development_certs.length > 1
+        development_certs
+          .sort_by { |certificate| Time.parse(certificate.expiration_date.to_s) }
+          .first(development_certs.length - 1)
+          .each do |certificate|
+            UI.message("Revoking excess CI development certificate: #{certificate.display_name} (#{certificate.id})")
+            certificate.delete!
+          end
+      end
+    end
   end
 
   private_lane :setup_distribution_signing do |options|
