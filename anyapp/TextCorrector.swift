@@ -7,7 +7,7 @@ import Foundation
 import FoundationModels
 
 enum TextCorrector {
-    static func correct(_ rawText: String) async -> String {
+    nonisolated static func correct(_ rawText: String) async -> String {
         let trimmed = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return trimmed }
 
@@ -18,7 +18,7 @@ enum TextCorrector {
         return applyRuleBasedCorrection(trimmed)
     }
 
-    private static func correctWithFoundationModel(_ text: String) async -> String? {
+    private nonisolated static func correctWithFoundationModel(_ text: String) async -> String? {
         let model = SystemLanguageModel.default
 
         guard case .available = model.availability else {
@@ -39,7 +39,7 @@ enum TextCorrector {
         }
     }
 
-    private static func applyRuleBasedCorrection(_ text: String) -> String {
+    private nonisolated static func applyRuleBasedCorrection(_ text: String) -> String {
         var result = text
 
         result = result.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
