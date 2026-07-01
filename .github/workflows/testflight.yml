@@ -1,6 +1,7 @@
 name: TestFlight
 
 # 앱/배포 관련 경로 변경 시 TestFlight에 자동 배포합니다.
+# workflow_dispatch로 수동 재배포도 가능합니다.
 # 빌드 번호는 fastlane이 자동 증가합니다 (docs/release.md 참고).
 
 on:
