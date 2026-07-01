@@ -1,5 +1,8 @@
 name: TestFlight
 
+# main push 시 TestFlight에 자동 배포합니다.
+# 빌드 번호는 fastlane이 자동 증가합니다 (docs/release.md 참고).
+
 on:
   push:
     branches: [main]
@@ -50,6 +53,7 @@ jobs:
         run: ./scripts/verify_ci_config.sh
 
       - name: Deploy to TestFlight
+        # MARKETING_VERSION은 Xcode에서 수동 관리, 빌드 번호는 fastlane next_build_number가 자동 설정
         run: bundle exec fastlane beta
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}

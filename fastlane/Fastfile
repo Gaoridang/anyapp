@@ -38,6 +38,8 @@ platform :ios do
     )
   end
 
+  # 빌드 번호 = max(GITHUB_RUN_NUMBER, TestFlight 최신 빌드 + 1)
+  # 자세한 정책은 docs/release.md 참고
   private_lane :next_build_number do |options|
     api_key = options[:api_key]
     run_number = ENV.fetch("GITHUB_RUN_NUMBER", "0").to_i
