@@ -17,6 +17,8 @@ struct ItemDetailView: View {
     @State private var draftText = ""
     @State private var hasUnsavedChanges = false
     @State private var showSaveConfirmation = false
+    @State private var saveErrorMessage: String?
+    @State private var transcriptionErrorMessage: String?
     @State private var processingStatus: ProcessingStatus?
     @FocusState private var isTextFieldFocused: Bool
 
@@ -101,9 +103,27 @@ struct ItemDetailView: View {
                     .background(.ultraThinMaterial, in: Capsule())
                     .padding(.top, 8)
                     .transition(.move(edge: .top).combined(with: .opacity))
+            } else if let transcriptionErrorMessage {
+                Text(transcriptionErrorMessage)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    .padding(.top, 8)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: showSaveConfirmation)
+        .animation(.easeInOut(duration: 0.2), value: transcriptionErrorMessage)
+        .alert("저장 실패", isPresented: Binding(
+            get: { saveErrorMessage != nil },
+            set: { if !$0 { saveErrorMessage = nil } }
+        )) {
+            Button("확인", role: .cancel) {}
+        } message: {
+            Text(saveErrorMessage ?? "")
+        }
         .task {
             await recorder.prepare()
             _ = await SpeechTranscriber.requestAuthorization()
@@ -252,7 +272,11 @@ struct ItemDetailView: View {
     }
 
     private func processTranscription(from url: URL) async {
+        transcriptionErrorMessage = nil
         processingStatus = .transcribing
+
+        // 녹음 파일이 디스크에 완전히 기록될 때까지 잠시 대기
+        try? await Task.sleep(for: .milliseconds(200))
 
         do {
             let rawText = try await SpeechTranscriber.transcribe(url: url)
@@ -264,9 +288,14 @@ struct ItemDetailView: View {
             } else {
                 item.textNote += "\n" + corrected
             }
-            try? modelContext.save()
+            try modelContext.save()
         } catch {
-            // 음성 인식 실패 시 오디오만 유지
+            transcriptionErrorMessage = (error as? LocalizedError)?.errorDescription
+                ?? "음성을 텍스트로 변환하지 못했습니다."
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                transcriptionErrorMessage = nil
+            }
         }
 
         processingStatus = nil
@@ -286,13 +315,24 @@ struct ItemDetailView: View {
     }
 
     private func saveMemo() {
+        isTextFieldFocused = false
         appendDraftToNote()
-        try? modelContext.save()
 
-        showSaveConfirmation = true
-        Task {
+        do {
+            try modelContext.save()
+        } catch {
+            saveErrorMessage = error.localizedDescription
+            return
+        }
+
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showSaveConfirmation = true
+        }
+        Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
-            showSaveConfirmation = false
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showSaveConfirmation = false
+            }
         }
     }
 

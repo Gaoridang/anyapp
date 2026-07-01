@@ -11,11 +11,11 @@ import SwiftData
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Item.timestamp, order: .reverse) private var items: [Item]
-    @State private var selectedItem: Item?
+    @State private var selectedItemID: PersistentIdentifier?
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $selectedItem) {
+            List(selection: $selectedItemID) {
                 ForEach(items) { item in
                     NavigationLink(value: item.persistentModelID) {
                         ItemRowView(item: item)
@@ -40,8 +40,9 @@ struct ContentView: View {
                 }
             }
         } detail: {
-            if let selectedItem {
-                ItemDetailView(item: selectedItem)
+            if let selectedItemID,
+               let item = modelContext.model(for: selectedItemID) as? Item {
+                ItemDetailView(item: item)
             } else {
                 ContentUnavailableView(
                     "메모 없음",
@@ -56,7 +57,7 @@ struct ContentView: View {
         withAnimation {
             let newItem = Item(timestamp: Date())
             modelContext.insert(newItem)
-            selectedItem = newItem
+            selectedItemID = newItem.persistentModelID
         }
     }
 
@@ -66,8 +67,9 @@ struct ContentView: View {
                 items[index].deleteAudioFile()
                 modelContext.delete(items[index])
             }
-            if let selectedItem, !items.contains(where: { $0.persistentModelID == selectedItem.persistentModelID }) {
-                self.selectedItem = nil
+            if let selectedItemID,
+               !items.contains(where: { $0.persistentModelID == selectedItemID }) {
+                self.selectedItemID = nil
             }
         }
     }
