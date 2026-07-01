@@ -4,6 +4,7 @@
 //
 
 import AVFoundation
+import Foundation
 import Testing
 @testable import anyapp
 
@@ -39,6 +40,43 @@ private final class MockSessionConfigurator: AudioSessionConfiguring, @unchecked
         if let configureError {
             throw configureError
         }
+    }
+}
+
+private final class MockRecordingCapture: RecordingCapturing, @unchecked Sendable {
+    var currentTime: TimeInterval = 0
+    var isMeteringEnabled = false
+    var recordResult = true
+    private(set) var didPrepare = false
+    private(set) var didRecord = false
+    private(set) var didStop = false
+
+    func prepareToRecord() -> Bool {
+        didPrepare = true
+        return true
+    }
+
+    func record() -> Bool {
+        didRecord = recordResult
+        return recordResult
+    }
+
+    func stop() {
+        didStop = true
+    }
+}
+
+private final class MockRecordingCaptureMaker: RecordingCaptureMaking, @unchecked Sendable {
+    var lastCapture: MockRecordingCapture?
+    var makeError: Error?
+
+    func makeRecorder(url: URL, settings: [String: Any]) throws -> any RecordingCapturing {
+        if let makeError {
+            throw makeError
+        }
+        let capture = MockRecordingCapture()
+        lastCapture = capture
+        return capture
     }
 }
 
@@ -110,6 +148,71 @@ struct AudioRecorderTests {
         #expect(!recorder.canRecord)
         #expect(!recorder.isRecording)
         #expect(session.configureCallCount == 0)
+    }
+
+    @Test func startRecordingSuccessEntersRecordingState() async throws {
+        let permission = MockPermissionProvider(recordPermission: .granted, requestResult: true)
+        let session = MockSessionConfigurator()
+        let captureMaker = MockRecordingCaptureMaker()
+        let recorder = AudioRecorder(
+            permissionProvider: permission,
+            sessionConfigurator: session,
+            captureMaker: captureMaker
+        )
+
+        await recorder.prepare()
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).m4a")
+
+        try recorder.startRecording(to: url)
+
+        #expect(recorder.state == .recording)
+        #expect(recorder.isRecording)
+        #expect(captureMaker.lastCapture?.didRecord == true)
+        #expect(session.configureCallCount == 1)
+    }
+
+    @Test func elapsedTimerUpdatesWhileRecording() async throws {
+        let permission = MockPermissionProvider(recordPermission: .granted, requestResult: true)
+        let captureMaker = MockRecordingCaptureMaker()
+        let recorder = AudioRecorder(
+            permissionProvider: permission,
+            captureMaker: captureMaker
+        )
+
+        await recorder.prepare()
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).m4a")
+        try recorder.startRecording(to: url)
+
+        let initialElapsed = recorder.elapsedTime
+        captureMaker.lastCapture?.currentTime = 1.5
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(recorder.elapsedTime > initialElapsed)
+        #expect(recorder.elapsedTime >= 1.0)
+    }
+
+    @Test func stopRecordingReturnsDurationAndResetsState() async throws {
+        let permission = MockPermissionProvider(recordPermission: .granted, requestResult: true)
+        let session = MockSessionConfigurator()
+        let captureMaker = MockRecordingCaptureMaker()
+        let recorder = AudioRecorder(
+            permissionProvider: permission,
+            sessionConfigurator: session,
+            captureMaker: captureMaker
+        )
+
+        await recorder.prepare()
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).m4a")
+        try recorder.startRecording(to: url)
+
+        captureMaker.lastCapture?.currentTime = 2.5
+        let duration = recorder.stopRecording()
+
+        #expect(duration == 2.5)
+        #expect(recorder.state == .idle)
+        #expect(!recorder.isRecording)
+        #expect(captureMaker.lastCapture?.didStop == true)
+        #expect(session.deactivateCallCount >= 1)
     }
 
     @Test func stopRecordingWhenIdleReturnsNil() async {

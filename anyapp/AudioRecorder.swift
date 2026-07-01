@@ -16,6 +16,18 @@ protocol AudioSessionConfiguring: Sendable {
     func configureForRecording() throws
 }
 
+protocol RecordingCapturing: AnyObject {
+    var currentTime: TimeInterval { get }
+    var isMeteringEnabled: Bool { get set }
+    func prepareToRecord() -> Bool
+    func record() -> Bool
+    func stop()
+}
+
+protocol RecordingCaptureMaking: Sendable {
+    func makeRecorder(url: URL, settings: [String: Any]) throws -> any RecordingCapturing
+}
+
 struct SystemMicrophonePermissionProvider: MicrophonePermissionProviding {
     var recordPermission: AVAudioApplication.recordPermission {
         AVAudioApplication.shared.recordPermission
@@ -51,6 +63,31 @@ struct SystemAudioSessionConfigurator: AudioSessionConfiguring {
     }
 }
 
+final class AVAudioRecorderCapture: RecordingCapturing {
+    private let recorder: AVAudioRecorder
+
+    init(recorder: AVAudioRecorder) {
+        self.recorder = recorder
+    }
+
+    var currentTime: TimeInterval { recorder.currentTime }
+    var isMeteringEnabled: Bool {
+        get { recorder.isMeteringEnabled }
+        set { recorder.isMeteringEnabled = newValue }
+    }
+
+    func prepareToRecord() -> Bool { recorder.prepareToRecord() }
+    func record() -> Bool { recorder.record() }
+    func stop() { recorder.stop() }
+}
+
+struct SystemRecordingCaptureMaker: RecordingCaptureMaking {
+    func makeRecorder(url: URL, settings: [String: Any]) throws -> any RecordingCapturing {
+        let recorder = try AVAudioRecorder(url: url, settings: settings)
+        return AVAudioRecorderCapture(recorder: recorder)
+    }
+}
+
 @Observable
 @MainActor
 final class AudioRecorder {
@@ -78,21 +115,31 @@ final class AudioRecorder {
         }
     }
 
+    static let recordingSettings: [String: Any] = [
+        AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+        AVSampleRateKey: 44_100,
+        AVNumberOfChannelsKey: 1,
+        AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+    ]
+
     private(set) var state: State = .idle
     private(set) var elapsedTime: TimeInterval = 0
     private(set) var isPrepared = false
 
     private let permissionProvider: any MicrophonePermissionProviding
     private let sessionConfigurator: any AudioSessionConfiguring
-    private var recorder: AVAudioRecorder?
+    private let captureMaker: any RecordingCaptureMaking
+    private var recorder: (any RecordingCapturing)?
     private var tickTask: Task<Void, Never>?
 
     init(
         permissionProvider: any MicrophonePermissionProviding = SystemMicrophonePermissionProvider(),
-        sessionConfigurator: any AudioSessionConfiguring = SystemAudioSessionConfigurator()
+        sessionConfigurator: any AudioSessionConfiguring = SystemAudioSessionConfigurator(),
+        captureMaker: any RecordingCaptureMaking = SystemRecordingCaptureMaker()
     ) {
         self.permissionProvider = permissionProvider
         self.sessionConfigurator = sessionConfigurator
+        self.captureMaker = captureMaker
     }
 
     var isRecording: Bool {
@@ -135,15 +182,8 @@ final class AudioRecorder {
             throw error
         }
 
-        let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 44_100,
-            AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
-        ]
-
         do {
-            recorder = try AVAudioRecorder(url: url, settings: settings)
+            recorder = try captureMaker.makeRecorder(url: url, settings: Self.recordingSettings)
         } catch {
             state = .error("녹음 장치를 초기화할 수 없습니다.")
             throw error
@@ -180,7 +220,7 @@ final class AudioRecorder {
 
     private func startElapsedTimer() {
         stopElapsedTimer()
-        tickTask = Task { [weak self] in
+        tickTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(100))
                 guard let self, self.isRecording else { break }

@@ -32,6 +32,7 @@ struct ContentView: View {
                     Button(action: addItem) {
                         Label("새 메모", systemImage: "plus")
                     }
+                    .accessibilityIdentifier("addMemoButton")
                 }
             }
             .navigationDestination(for: PersistentIdentifier.self) { id in

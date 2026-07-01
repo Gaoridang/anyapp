@@ -175,6 +175,7 @@ struct ItemDetailView: View {
                 .shadow(color: .black.opacity(0.06), radius: 8, y: 3)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("micButton")
         .disabled(!isRecorderReady || !recorder.canRecord || processingStatus != nil)
         .opacity(isRecorderReady && recorder.canRecord && processingStatus == nil ? 1 : 0.45)
         .animation(.easeInOut(duration: 0.2), value: recorder.isRecording)
@@ -189,6 +190,7 @@ struct ItemDetailView: View {
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
                     .contentTransition(.numericText())
+                    .accessibilityIdentifier("recordingTimer")
             } else if let duration = item.audioDuration {
                 playbackControls(duration: duration)
             } else {
@@ -218,6 +220,7 @@ struct ItemDetailView: View {
                     .foregroundStyle(.tint)
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("playbackButton")
 
             Text(formattedDuration(duration))
                 .font(.subheadline)
@@ -268,7 +271,7 @@ struct ItemDetailView: View {
                 ?? recorder.lastErrorMessage
                 ?? "녹음을 시작할 수 없습니다."
             recordingErrorMessage = message
-            Task {
+            Task { @MainActor in
                 try? await Task.sleep(for: .seconds(3))
                 recordingErrorMessage = nil
             }
@@ -289,7 +292,7 @@ struct ItemDetailView: View {
             let url = AudioFileStore.documentsDirectory.appendingPathComponent(fileName)
             try? FileManager.default.removeItem(at: url)
             recordingErrorMessage = "녹음된 오디오가 없습니다. 다시 시도해 주세요."
-            Task {
+            Task { @MainActor in
                 try? await Task.sleep(for: .seconds(3))
                 recordingErrorMessage = nil
             }
@@ -323,7 +326,7 @@ struct ItemDetailView: View {
         } catch {
             transcriptionErrorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "음성을 텍스트로 변환하지 못했습니다."
-            Task {
+            Task { @MainActor in
                 try? await Task.sleep(for: .seconds(3))
                 transcriptionErrorMessage = nil
             }
