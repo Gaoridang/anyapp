@@ -142,6 +142,7 @@ final class AudioRecorder {
     private let captureMaker: any RecordingCaptureMaking
     private var recorder: (any RecordingCapturing)?
     private var tickTask: Task<Void, Never>?
+    private var recordingStartedAt: Date?
 
     init(
         permissionProvider: any MicrophonePermissionProviding = SystemMicrophonePermissionProvider(),
@@ -241,6 +242,7 @@ final class AudioRecorder {
         }
 
         elapsedTime = 0
+        recordingStartedAt = Date()
         state = .recording
         startElapsedTimer()
     }
@@ -250,9 +252,12 @@ final class AudioRecorder {
 
         stopElapsedTimer()
 
+        let wallClockDuration = recordingStartedAt.map { Date().timeIntervalSince($0) } ?? 0
+        let capturedDuration = max(recorder?.currentTime ?? 0, elapsedTime, wallClockDuration)
         recorder?.stop()
-        let duration = recorder?.currentTime ?? elapsedTime
+        let duration = max(capturedDuration, recorder?.currentTime ?? 0)
         recorder = nil
+        recordingStartedAt = nil
 
         try? sessionConfigurator.deactivateSession()
         state = .idle

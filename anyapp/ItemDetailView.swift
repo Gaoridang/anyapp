@@ -73,15 +73,15 @@ struct ItemDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemGroupedBackground))
         .overlay(alignment: .bottom) {
-            if case .permissionDenied = recorder.state {
-                Text("마이크를 사용할 수 없습니다.\n아래 입력창으로 메모를 작성하세요.")
+            if let recordingErrorMessage {
+                Text(recordingErrorMessage)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
                     .padding(.bottom, 100)
-            } else if let recordingErrorMessage {
-                Text(recordingErrorMessage)
+            } else if case .permissionDenied = recorder.state {
+                Text("마이크를 사용할 수 없습니다.\n아래 입력창으로 메모를 작성하세요.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -307,10 +307,13 @@ struct ItemDetailView: View {
 
         var savedURL: URL?
 
-        if let duration = recorder.stopRecording() {
-            item.audioFileName = pendingRecordingFileName
-            item.audioDuration = duration
-            savedURL = item.audioFileURL
+        if let duration = recorder.stopRecording(),
+           let saved = RecordingPersistence.persistStoppedRecording(
+               on: item,
+               pendingFileName: pendingRecordingFileName,
+               duration: duration
+           ) {
+            savedURL = saved
             try? modelContext.save()
         } else if let fileName = pendingRecordingFileName {
             let url = AudioFileStore.documentsDirectory.appendingPathComponent(fileName)
