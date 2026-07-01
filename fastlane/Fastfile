@@ -1,0 +1,101 @@
+default_platform(:ios)
+
+platform :ios do
+  before_all do
+    setup_ci if ENV["CI"]
+  end
+
+  private_lane :asc_api_key do
+    app_store_connect_api_key(
+      key_id: ENV.fetch("ASC_KEY_ID"),
+      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+      key_filepath: ENV.fetch("ASC_KEY_PATH"),
+      duration: 1200,
+      in_house: false
+    )
+  end
+
+  private_lane :configure_signing do
+    if ENV["PROVISIONING_PROFILE_NAME"]
+      update_code_signing_settings(
+        use_automatic_signing: false,
+        path: "anyapp.xcodeproj",
+        targets: ["anyapp"],
+        team_id: "T5CBR768BM",
+        bundle_identifier: "com.ijaejun.anyapp",
+        profile_name: ENV.fetch("PROVISIONING_PROFILE_NAME"),
+        code_sign_identity: "Apple Distribution"
+      )
+      return
+    end
+
+    update_code_signing_settings(
+      use_automatic_signing: true,
+      path: "anyapp.xcodeproj",
+      targets: ["anyapp"],
+      team_id: "T5CBR768BM",
+      bundle_identifier: "com.ijaejun.anyapp"
+    )
+  end
+
+  private_lane :next_build_number do |options|
+    api_key = options[:api_key]
+    run_number = ENV.fetch("GITHUB_RUN_NUMBER", "0").to_i
+    latest = latest_testflight_build_number(
+      api_key: api_key,
+      app_identifier: "com.ijaejun.anyapp",
+      initial_build_number: 0
+    )
+    [run_number, latest + 1].max
+  end
+
+  desc "Build and upload a beta build to TestFlight"
+  lane :beta do
+    api_key = asc_api_key
+    configure_signing
+
+    increment_build_number(
+      build_number: next_build_number(api_key: api_key).to_s,
+      xcodeproj: "anyapp.xcodeproj"
+    )
+
+    xcode_auth_args = [
+      "-allowProvisioningUpdates",
+      "-authenticationKeyPath", ENV.fetch("ASC_KEY_PATH"),
+      "-authenticationKeyID", ENV.fetch("ASC_KEY_ID"),
+      "-authenticationKeyIssuerID", ENV.fetch("ASC_ISSUER_ID")
+    ].join(" ")
+
+    build_options = {
+      scheme: "anyapp",
+      project: "anyapp.xcodeproj",
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: "./build",
+      output_name: "anyapp.ipa",
+      include_bitcode: false,
+      xcargs: xcode_auth_args
+    }
+
+    if ENV["PROVISIONING_PROFILE_NAME"]
+      build_options[:export_options] = {
+        provisioningProfiles: {
+          "com.ijaejun.anyapp" => ENV.fetch("PROVISIONING_PROFILE_NAME")
+        }
+      }
+    else
+      build_options[:export_options] = {
+        signingStyle: "automatic",
+        teamID: "T5CBR768BM"
+      }
+    end
+
+    build_app(build_options)
+
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true,
+      distribute_external: false
+    )
+  end
+end
