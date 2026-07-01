@@ -40,6 +40,8 @@ struct ItemDetailView: View {
 
                 belowMicSlot
 
+                savedNoteSection
+
                 if let processingStatus {
                     HStack(spacing: 8) {
                         ProgressView()
@@ -103,18 +105,17 @@ struct ItemDetailView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: showSaveConfirmation)
         .task {
-            draftText = item.textNote
             await recorder.prepare()
             _ = await SpeechTranscriber.requestAuthorization()
         }
         .onChange(of: draftText) {
-            hasUnsavedChanges = draftText != item.textNote
+            hasUnsavedChanges = !draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
         .onDisappear {
             finishRecordingIfNeeded()
             stopPlayback()
             if hasUnsavedChanges {
-                item.textNote = draftText
+                appendDraftToNote()
                 try? modelContext.save()
             }
         }
@@ -159,6 +160,18 @@ struct ItemDetailView: View {
             }
         }
         .frame(height: 60)
+    }
+
+    @ViewBuilder
+    private var savedNoteSection: some View {
+        if !item.textNote.isEmpty {
+            Text(item.textNote)
+                .font(.body)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .textSelection(.enabled)
+        }
     }
 
     private func playbackControls(duration: TimeInterval) -> some View {
@@ -225,6 +238,7 @@ struct ItemDetailView: View {
             item.audioFileName = pendingRecordingFileName
             item.audioDuration = duration
             savedURL = item.audioFileURL
+            try? modelContext.save()
         } else if let fileName = pendingRecordingFileName {
             let url = AudioFileStore.documentsDirectory.appendingPathComponent(fileName)
             try? FileManager.default.removeItem(at: url)
@@ -245,12 +259,12 @@ struct ItemDetailView: View {
             processingStatus = .correcting
             let corrected = await TextCorrector.correct(rawText)
 
-            if draftText.isEmpty {
-                draftText = corrected
+            if item.textNote.isEmpty {
+                item.textNote = corrected
             } else {
-                draftText += "\n" + corrected
+                item.textNote += "\n" + corrected
             }
-            hasUnsavedChanges = draftText != item.textNote
+            try? modelContext.save()
         } catch {
             // 음성 인식 실패 시 오디오만 유지
         }
@@ -258,10 +272,22 @@ struct ItemDetailView: View {
         processingStatus = nil
     }
 
-    private func saveMemo() {
-        item.textNote = draftText
-        try? modelContext.save()
+    private func appendDraftToNote() {
+        let trimmed = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        if item.textNote.isEmpty {
+            item.textNote = trimmed
+        } else {
+            item.textNote += "\n" + trimmed
+        }
+        draftText = ""
         hasUnsavedChanges = false
+    }
+
+    private func saveMemo() {
+        appendDraftToNote()
+        try? modelContext.save()
 
         showSaveConfirmation = true
         Task {
