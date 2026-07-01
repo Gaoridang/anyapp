@@ -51,21 +51,10 @@ platform :ios do
     end
   end
 
-  private_lane :install_wwdr_certificate do
-    wwdr_path = "/tmp/AppleWWDRCAG4.cer"
-    sh("curl -sf https://www.apple.com/certificateauthority/AppleWWDRCAG4.cer -o #{wwdr_path}")
-    import_certificate(
-      certificate_path: wwdr_path,
-      keychain_path: ENV.fetch("KEYCHAIN_PATH"),
-      keychain_password: ENV.fetch("KEYCHAIN_PASSWORD")
-    )
-  end
-
   private_lane :setup_distribution_signing do |options|
     api_key = options[:api_key]
 
     prune_certificates
-    install_wwdr_certificate
 
     cert(api_key: api_key, force: false)
 
