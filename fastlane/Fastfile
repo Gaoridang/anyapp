@@ -1,5 +1,12 @@
 default_platform(:ios)
 
+def build_uploaded_at(build)
+  raw = build.uploaded_date || build.uploadedDate
+  return nil unless raw
+
+  Time.parse(raw.to_s)
+end
+
 platform :ios do
   before_all do
     setup_ci if ENV["CI"]
@@ -158,13 +165,6 @@ platform :ios do
       sort: "-uploadedDate",
       limit: 30
     )
-  end
-
-  private_lane :build_uploaded_at do |build|
-    raw = build.uploaded_date || build.uploadedDate
-    next nil unless raw
-
-    Time.parse(raw.to_s)
   end
 
   # Apple 일일 업로드 한도(90382)를 피하기 위해 CI에서 업로드 간격·횟수를 제한합니다.
