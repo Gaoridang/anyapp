@@ -43,7 +43,7 @@ enum STTMode: String, CaseIterable, Identifiable {
 enum STTModeStore {
     private static let userDefaultsKey = "sttMode"
 
-    static var mode: STTMode {
+    nonisolated static var mode: STTMode {
         get {
             guard let rawValue = UserDefaults.standard.string(forKey: userDefaultsKey),
                   let mode = STTMode(rawValue: rawValue) else {

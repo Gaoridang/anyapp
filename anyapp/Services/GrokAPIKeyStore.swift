@@ -12,7 +12,7 @@ enum GrokAPIKeyStore {
     private static let bundleKey = "XAIApiKey"
     private static let placeholderValues: Set<String> = ["", "your-key-here", "$(XAI_API_KEY)"]
 
-    static var hasKey: Bool {
+    nonisolated static var hasKey: Bool {
         guard let key = load() else { return false }
         return !key.isEmpty
     }

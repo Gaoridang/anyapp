@@ -123,8 +123,8 @@ struct APIKeySettingsView: View {
     private var automaticProviderDescription: String {
         STTRouter(
             modeProvider: { selectedSTTMode },
-            hasGrokKey: { hasStoredKey },
-            onDeviceAvailability: { onDeviceAvailable }
+            onDeviceAvailability: { onDeviceAvailable },
+            hasGrokKey: { hasStoredKey }
         ).resolvedProvider(for: .automatic) == .grok
             ? "자동 모드: API 키가 있어 Grok을 사용합니다."
             : "자동 모드: API 키가 없어 기기 음성 인식을 사용합니다."

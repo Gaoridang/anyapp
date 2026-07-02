@@ -71,7 +71,7 @@ struct SystemOnDeviceSpeechTranscriber: OnDeviceSpeechTranscribing {
                     }
                 }
 
-                taskBox.task = recognizer.recognitionTask(with: request) { result, error in
+                taskBox.setTask(recognizer.recognitionTask(with: request) { result, error in
                     if let error {
                         finish(.failure(error))
                         return
@@ -85,14 +85,14 @@ struct SystemOnDeviceSpeechTranscriber: OnDeviceSpeechTranscribing {
                     } else {
                         finish(.success(text))
                     }
-                }
+                })
 
-                if taskBox.task == nil {
+                if !taskBox.hasTask {
                     finish(.failure(AppleSpeechSTTClient.STTError.recognitionFailed))
                 }
             }
         } onCancel: {
-            taskBox.task?.cancel()
+            taskBox.cancel()
         }
     }
 
@@ -102,7 +102,27 @@ struct SystemOnDeviceSpeechTranscriber: OnDeviceSpeechTranscribing {
 }
 
 private final class RecognitionTaskBox: @unchecked Sendable {
-    var task: SFSpeechRecognitionTask?
+    private let lock = NSLock()
+    private var task: SFSpeechRecognitionTask?
+
+    var hasTask: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return task != nil
+    }
+
+    func setTask(_ newTask: SFSpeechRecognitionTask?) {
+        lock.lock()
+        task = newTask
+        lock.unlock()
+    }
+
+    func cancel() {
+        lock.lock()
+        let currentTask = task
+        lock.unlock()
+        currentTask?.cancel()
+    }
 }
 
 struct AppleSpeechSTTClient: SpeechTranscriptionClient {
@@ -117,7 +137,7 @@ struct AppleSpeechSTTClient: SpeechTranscriptionClient {
         self.transcriber = transcriber
     }
 
-    static var isOnDeviceAvailable: Bool {
+    nonisolated static var isOnDeviceAvailable: Bool {
         SystemOnDeviceSpeechTranscriber().isOnDeviceAvailable
     }
 
