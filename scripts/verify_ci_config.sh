@@ -16,8 +16,7 @@ check() {
 }
 
 check "workflow exists" "test -f .github/workflows/testflight.yml"
-check "workflow has push trigger on main" "grep -q 'branches: \\[main\\]' .github/workflows/testflight.yml"
-check "workflow has path filters" "grep -q 'paths:' .github/workflows/testflight.yml"
+check "workflow is manual only" "! grep -q '^  push:' .github/workflows/testflight.yml"
 check "workflow has workflow_dispatch" "grep -q 'workflow_dispatch' .github/workflows/testflight.yml"
 check "workflow caches DerivedData" "grep -q 'Developer/Xcode/DerivedData' .github/workflows/testflight.yml"
 check "workflow uses write_asc_api_key script" "grep -q 'scripts/write_asc_api_key.sh' .github/workflows/testflight.yml"

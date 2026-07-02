@@ -1,18 +1,10 @@
 name: TestFlight
 
-# 앱/배포 관련 경로 변경 시 TestFlight에 자동 배포합니다.
-# workflow_dispatch로 수동 재배포도 가능합니다.
+# 폰에서 확인할 때만 GitHub Actions에서 수동 실행합니다.
+# Actions → TestFlight → Run workflow
 # 빌드 번호는 fastlane이 자동 증가합니다 (docs/release.md 참고).
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "anyapp/**"
-      - "fastlane/**"
-      - "Gemfile"
-      - "Gemfile.lock"
-      - ".github/workflows/testflight.yml"
   workflow_dispatch:
     inputs:
       force_upload:
@@ -73,4 +65,4 @@ jobs:
           ASC_KEY_PATH: ${{ env.ASC_KEY_PATH }}
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
           DERIVED_DATA_CACHE_HIT: ${{ steps.deriveddata-cache.outputs.cache-hit }}
-          FORCE_TESTFLIGHT_UPLOAD: ${{ github.event_name == 'workflow_dispatch' && inputs.force_upload && 'true' || '' }}
+          FORCE_TESTFLIGHT_UPLOAD: ${{ inputs.force_upload && 'true' || '' }}
