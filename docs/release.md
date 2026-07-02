@@ -80,20 +80,24 @@ TestFlight 워크플로우는 아래 최적화가 적용되어 있습니다.
 - **DerivedData 캐시** — 2회차 이후 빌드 시간 단축
 - **수동 배포** — `workflow_dispatch` 또는 `repository_dispatch`로 실행 (`main` push와 분리)
 - **CI 빌드 플래그** — `ENABLE_PREVIEWS=NO`, `COMPILER_INDEX_STORE_ENABLE=NO`
-- **90382 처리** — Apple 일일 업로드 한도에 걸리면 CI를 실패로 표시하지 않고 안내 메시지와 함께 종료
+- **90382 사전 검사** — 24시간 내 업로드가 많으면 빌드 전에 CI 실패 (runner 시간 절약)
+- **90382 처리** — 업로드 단계에서 Apple 한도(90382)에 걸리면 CI를 **실패**로 표시
 
 ## TestFlight 업로드 한도 (90382)
 
 Apple은 앱당 하루 업로드 횟수에 제한이 있습니다. 짧은 시간에 TestFlight 워크플로를 여러 번 실행하면 `Upload limit reached (90382)` 오류가 날 수 있습니다.
 
+**Apple 90382 한도는 우회할 수 없습니다.** 한도가 풀릴 때까지(보통 ~24시간) 기다린 뒤 워크플로를 다시 실행해야 합니다.
+
 | 상황 | CI 결과 | 조치 |
 |---|---|---|
-| 90382 (Apple 일일 한도) | 성공 (업로드 생략) | 24시간 후 `force_upload`로 재시도 |
+| 24시간 내 업로드 과다 (사전 검사) | **실패** (빌드 생략) | ~24시간 후 워크플로 재실행 |
+| 90382 (Apple 일일 한도) | **실패** (업로드 실패) | ~24시간 후 워크플로 재실행 |
 
 환경 변수 (Fastfile):
 
 - `TARGET_BUILD_NUMBER` — 워크플로 `build_number` 입력값 (예: `40`)
-- `FORCE_TESTFLIGHT_UPLOAD=true` — Apple 90382 한도에 걸려도 업로드 재시도
+- `TESTFLIGHT_MAX_UPLOADS_PER_24H` — 사전 검사 임계값 (기본 `10`)
 
 ## 관련 파일
 

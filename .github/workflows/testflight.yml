@@ -12,11 +12,6 @@ on:
         required: false
         default: ""
         type: string
-      force_upload:
-        description: "Ignore Apple upload limit (90382) and retry upload"
-        required: false
-        default: false
-        type: boolean
   repository_dispatch:
     types: [deploy-testflight]
 
@@ -73,4 +68,3 @@ jobs:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
           DERIVED_DATA_CACHE_HIT: ${{ steps.deriveddata-cache.outputs.cache-hit }}
           TARGET_BUILD_NUMBER: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.build_number || inputs.build_number }}
-          FORCE_TESTFLIGHT_UPLOAD: ${{ (github.event_name == 'repository_dispatch' && github.event.client_payload.force_upload == 'true' && 'true') || (inputs.force_upload && 'true') || '' }}
