@@ -6,6 +6,7 @@
 import AVFoundation
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct ItemDetailView: View {
     @Environment(\.modelContext) private var modelContext
@@ -19,6 +20,8 @@ struct ItemDetailView: View {
     @State private var showSaveConfirmation = false
     @State private var saveErrorMessage: String?
     @State private var recordingErrorMessage: String?
+    @State private var showsRecordingUI = false
+    @State private var isHandlingRecordingTap = false
 
     @State private var audioPlayer = AudioPlayer()
 
@@ -84,14 +87,14 @@ struct ItemDetailView: View {
 
     private var micButton: some View {
         Button(action: toggleRecording) {
-            Image(systemName: recorder.isRecording ? "stop.fill" : "mic")
+            Image(systemName: showsRecordingUI ? "stop.fill" : "mic")
                 .font(.system(size: 30, weight: .light))
                 .symbolRenderingMode(.monochrome)
-                .foregroundStyle(recorder.isRecording ? .white : .primary)
+                .foregroundStyle(showsRecordingUI ? .white : .primary)
                 .frame(width: 88, height: 88)
                 .background {
                     Circle()
-                        .fill(recorder.isRecording ? Color.red.opacity(0.88) : Color(.secondarySystemFill))
+                        .fill(showsRecordingUI ? Color.red.opacity(0.88) : Color(.secondarySystemFill))
                 }
                 .overlay {
                     Circle()
@@ -101,17 +104,17 @@ struct ItemDetailView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("micButton")
-        .accessibilityLabel(recorder.isRecording ? "녹음 중지" : "녹음 시작")
+        .accessibilityLabel(showsRecordingUI ? "녹음 중지" : "녹음 시작")
         .accessibilityHint(recorder.canRecord ? "" : "마이크 권한이 필요합니다")
-        .disabled(!recorder.isPrepared)
-        .opacity(recorder.isPrepared && (recorder.canRecord || recorder.isRecording) ? 1 : 0.45)
-        .animation(.easeInOut(duration: 0.2), value: recorder.isRecording)
+        .disabled(!recorder.isPrepared || isHandlingRecordingTap)
+        .opacity(recorder.isPrepared && (recorder.canRecord || showsRecordingUI) ? 1 : 0.45)
+        .animation(nil, value: showsRecordingUI)
     }
 
     @ViewBuilder
     private var belowMicSlot: some View {
         Group {
-            if recorder.isRecording {
+            if showsRecordingUI {
                 Text(formattedDuration(recorder.elapsedTime))
                     .font(.system(.title3, design: .rounded, weight: .medium))
                     .monospacedDigit()
@@ -124,6 +127,7 @@ struct ItemDetailView: View {
             }
         }
         .frame(height: 60)
+        .animation(nil, value: showsRecordingUI)
     }
 
     @ViewBuilder
@@ -133,6 +137,13 @@ struct ItemDetailView: View {
                 .font(.body)
                 .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16)
+                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                }
                 .padding(.horizontal, 20)
                 .textSelection(.enabled)
         }
@@ -147,8 +158,8 @@ struct ItemDetailView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("playbackButton")
-            .disabled(recorder.isRecording)
-            .opacity(recorder.isRecording ? 0.45 : 1)
+            .disabled(showsRecordingUI || recorder.isRecording || isHandlingRecordingTap)
+            .opacity(showsRecordingUI || recorder.isRecording ? 0.45 : 1)
 
             Text(formattedDuration(duration))
                 .font(.subheadline)
@@ -227,16 +238,37 @@ struct ItemDetailView: View {
 
     // MARK: - Recording
 
+    private static let recordingUITransitionDelay: Duration = .milliseconds(120)
+
     private func toggleRecording() {
+        guard !isHandlingRecordingTap else { return }
+
         if recorder.isRecording {
+            triggerRecordingHaptic(isStarting: false)
             finishRecording()
             return
         }
+        triggerRecordingHaptic(isStarting: true)
         startRecording()
     }
 
+    private func triggerRecordingHaptic(isStarting: Bool) {
+        let style: UIImpactFeedbackGenerator.FeedbackStyle = isStarting ? .medium : .rigid
+        let generator = UIImpactFeedbackGenerator(style: style)
+        generator.prepare()
+        generator.impactOccurred()
+    }
+
     private func startRecording() {
+        isHandlingRecordingTap = true
+
         Task { @MainActor in
+            defer {
+                if !recorder.isRecording {
+                    isHandlingRecordingTap = false
+                }
+            }
+
             if !recorder.canRecord {
                 await recorder.prepare()
                 guard recorder.canRecord else {
@@ -258,9 +290,13 @@ struct ItemDetailView: View {
 
             do {
                 try recorder.startRecording(to: url)
+                try await Task.sleep(for: Self.recordingUITransitionDelay)
+                showsRecordingUI = true
+                isHandlingRecordingTap = false
             } catch {
                 pendingRecordingFileName = nil
                 try? FileManager.default.removeItem(at: url)
+                showsRecordingUI = false
                 let message = recorder.lastErrorMessage
                     ?? (error as? LocalizedError)?.errorDescription
                     ?? "녹음을 시작할 수 없습니다."
@@ -273,23 +309,33 @@ struct ItemDetailView: View {
     private func finishRecording() {
         guard recorder.isRecording else { return }
 
+        isHandlingRecordingTap = true
+
         let pending = pendingRecordingFileName
         pendingRecordingFileName = nil
 
         let duration = recorder.stopRecording()
 
-        guard let duration, duration > 0, let pending else {
-            if let pending {
-                let url = AudioFileStore.documentsDirectory.appendingPathComponent(pending)
-                try? FileManager.default.removeItem(at: url)
-            }
-            Task { await flashRecordingError("녹음된 오디오가 없습니다. 다시 시도해 주세요.") }
-            return
-        }
+        Task { @MainActor in
+            defer { isHandlingRecordingTap = false }
 
-        item.audioFileName = pending
-        item.audioDuration = duration
-        try? modelContext.save()
+            try? await Task.sleep(for: Self.recordingUITransitionDelay)
+
+            guard let duration, duration > 0, let pending else {
+                showsRecordingUI = false
+                if let pending {
+                    let url = AudioFileStore.documentsDirectory.appendingPathComponent(pending)
+                    try? FileManager.default.removeItem(at: url)
+                }
+                await flashRecordingError("녹음된 오디오가 없습니다. 다시 시도해 주세요.")
+                return
+            }
+
+            showsRecordingUI = false
+            item.audioFileName = pending
+            item.audioDuration = duration
+            try? modelContext.save()
+        }
     }
 
     // MARK: - Playback
@@ -356,6 +402,8 @@ struct ItemDetailView: View {
 
     private func teardown() {
         recorder.stopRecording()
+        showsRecordingUI = false
+        isHandlingRecordingTap = false
         audioPlayer.stop()
         recorder.deactivatePlaybackSession()
         if hasUnsavedChanges {
