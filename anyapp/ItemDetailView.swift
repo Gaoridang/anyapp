@@ -8,6 +8,12 @@ import SwiftData
 import SwiftUI
 
 struct ItemDetailView: View {
+    enum TranscriptionState: Equatable {
+        case idle
+        case transcribing
+        case failed(String)
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @Bindable var item: Item
@@ -21,8 +27,16 @@ struct ItemDetailView: View {
     @State private var recordingErrorMessage: String?
 
     @State private var audioPlayer = AudioPlayer()
+    @State private var transcriptionState: TranscriptionState = .idle
+    @State private var transcriptionTask: Task<Void, Never>?
+    @State private var sttClient: GrokSTTClient = GrokSTTClient()
 
     @FocusState private var isTextFieldFocused: Bool
+
+    private var isTranscribing: Bool {
+        if case .transcribing = transcriptionState { return true }
+        return false
+    }
 
     var body: some View {
         ScrollView {
@@ -58,6 +72,7 @@ struct ItemDetailView: View {
         .overlay(alignment: .top) { topBanner }
         .animation(.easeInOut(duration: 0.2), value: showSaveConfirmation)
         .animation(.easeInOut(duration: 0.2), value: recordingErrorMessage)
+        .animation(.easeInOut(duration: 0.2), value: transcriptionState)
         .alert("저장 실패", isPresented: Binding(
             get: { saveErrorMessage != nil },
             set: { if !$0 { saveErrorMessage = nil } }
@@ -68,6 +83,7 @@ struct ItemDetailView: View {
         }
         .task {
             await recorder.prepare()
+            resumePendingTranscriptionIfNeeded()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
@@ -103,9 +119,10 @@ struct ItemDetailView: View {
         .accessibilityIdentifier("micButton")
         .accessibilityLabel(recorder.isRecording ? "녹음 중지" : "녹음 시작")
         .accessibilityHint(recorder.canRecord ? "" : "마이크 권한이 필요합니다")
-        .disabled(!recorder.isPrepared)
-        .opacity(recorder.isPrepared && (recorder.canRecord || recorder.isRecording) ? 1 : 0.45)
+        .disabled(!recorder.isPrepared || isTranscribing)
+        .opacity(recorder.isPrepared && (recorder.canRecord || recorder.isRecording) && !isTranscribing ? 1 : 0.45)
         .animation(.easeInOut(duration: 0.2), value: recorder.isRecording)
+        .animation(.easeInOut(duration: 0.2), value: isTranscribing)
     }
 
     @ViewBuilder
@@ -117,6 +134,11 @@ struct ItemDetailView: View {
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("recordingTimer")
+            } else if isTranscribing {
+                Text("변환 중…")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("transcribingLabel")
             } else if let duration = item.audioDuration {
                 playbackControls(duration: duration)
             } else {
@@ -139,7 +161,9 @@ struct ItemDetailView: View {
     }
 
     private func playbackControls(duration: TimeInterval) -> some View {
-        HStack(spacing: 16) {
+        let displayDuration = playbackDisplayDuration(totalDuration: duration)
+
+        return HStack(spacing: 16) {
             Button(action: togglePlayback) {
                 Image(systemName: audioPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                     .font(.system(size: 36))
@@ -147,13 +171,14 @@ struct ItemDetailView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("playbackButton")
-            .disabled(recorder.isRecording)
-            .opacity(recorder.isRecording ? 0.45 : 1)
+            .disabled(recorder.isRecording || isTranscribing)
+            .opacity(recorder.isRecording || isTranscribing ? 0.45 : 1)
 
-            Text(formattedDuration(duration))
+            Text(formattedDuration(displayDuration))
                 .font(.subheadline)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
+                .accessibilityLabel(audioPlayer.isPlaying ? "남은 시간" : "총 길이")
         }
     }
 
@@ -185,6 +210,13 @@ struct ItemDetailView: View {
     private var bottomHint: some View {
         if let recordingErrorMessage {
             hintText(recordingErrorMessage)
+        } else if case .failed(let message) = transcriptionState {
+            VStack(spacing: 8) {
+                hintText(message)
+                Button("다시 시도", action: retryTranscription)
+                    .font(.subheadline.weight(.medium))
+            }
+            .padding(.bottom, 100)
         } else if case .permissionDenied = recorder.state {
             hintText("마이크를 사용할 수 없습니다.\n아래 입력창으로 메모를 작성하세요.")
         }
@@ -251,6 +283,9 @@ struct ItemDetailView: View {
             recorder.clearErrorState()
             audioPlayer.stop()
             recorder.deactivatePlaybackSession()
+
+            await ensureTranscriptionCompleteBeforeReplacingAudio()
+
             item.deleteAudioFile()
 
             let url = AudioFileStore.newRecordingURL()
@@ -269,7 +304,7 @@ struct ItemDetailView: View {
         }
     }
 
-    /// Stops recording and persists audio metadata. No speech or async follow-up work.
+    /// Stops recording and persists audio metadata. STT runs asynchronously afterward.
     private func finishRecording() {
         guard recorder.isRecording else { return }
 
@@ -290,6 +325,76 @@ struct ItemDetailView: View {
         item.audioFileName = pending
         item.audioDuration = duration
         try? modelContext.save()
+
+        startTranscription(for: pending)
+    }
+
+    // MARK: - Transcription
+
+    private func startTranscription(for fileName: String) {
+        let url = AudioFileStore.documentsDirectory.appendingPathComponent(fileName)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return
+        }
+
+        transcriptionTask?.cancel()
+        transcriptionTask = Task { @MainActor in
+            await transcribeAudio(fileName: fileName, fileURL: url)
+        }
+    }
+
+    private func retryTranscription() {
+        guard let fileName = item.audioFileName else { return }
+        startTranscription(for: fileName)
+    }
+
+    private func resumePendingTranscriptionIfNeeded() {
+        guard item.needsTranscription, let fileName = item.audioFileName else { return }
+        startTranscription(for: fileName)
+    }
+
+    @MainActor
+    private func ensureTranscriptionCompleteBeforeReplacingAudio() async {
+        if let transcriptionTask {
+            await transcriptionTask.value
+        }
+
+        guard item.needsTranscription,
+              let fileName = item.audioFileName,
+              let url = item.audioFileURL else {
+            return
+        }
+
+        await transcribeAudio(fileName: fileName, fileURL: url)
+    }
+
+    @MainActor
+    private func transcribeAudio(fileName: String, fileURL: URL) async {
+        guard fileName != item.lastTranscribedAudioFileName else {
+            transcriptionState = .idle
+            return
+        }
+
+        guard GrokAPIKeyStore.hasKey else {
+            transcriptionState = .failed(GrokSTTClient.STTError.missingAPIKey.localizedDescription)
+            return
+        }
+
+        transcriptionState = .transcribing
+
+        do {
+            let text = try await sttClient.transcribe(audioFileURL: fileURL)
+            guard !Task.isCancelled else { return }
+
+            item.appendTextEntry(text)
+            item.lastTranscribedAudioFileName = fileName
+            try modelContext.save()
+            transcriptionState = .idle
+        } catch is CancellationError {
+            transcriptionState = .idle
+        } catch {
+            transcriptionState = .failed(error.localizedDescription)
+        }
     }
 
     // MARK: - Playback
@@ -310,6 +415,16 @@ struct ItemDetailView: View {
             audioPlayer.stop()
             recorder.deactivatePlaybackSession()
         }
+    }
+
+    private func playbackDisplayDuration(totalDuration: TimeInterval) -> TimeInterval {
+        if audioPlayer.isPlaying {
+            return AudioPlayer.remainingTime(
+                total: audioPlayer.duration > 0 ? audioPlayer.duration : totalDuration,
+                elapsed: audioPlayer.currentTime
+            )
+        }
+        return totalDuration
     }
 
     // MARK: - Notes
@@ -340,14 +455,7 @@ struct ItemDetailView: View {
         let trimmed = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        let timestamp = Date.now.formatted(.dateTime.day().month().year().hour().minute())
-        let entry = "[\(timestamp)]\n\(trimmed)"
-
-        if item.textNote.isEmpty {
-            item.textNote = entry
-        } else {
-            item.textNote += "\n\n" + entry
-        }
+        item.appendTextEntry(trimmed)
         draftText = ""
         hasUnsavedChanges = false
     }
@@ -355,6 +463,8 @@ struct ItemDetailView: View {
     // MARK: - Lifecycle
 
     private func teardown() {
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
         recorder.stopRecording()
         audioPlayer.stop()
         recorder.deactivatePlaybackSession()
@@ -385,27 +495,59 @@ struct ItemDetailView: View {
 @MainActor
 final class AudioPlayer {
     private(set) var isPlaying = false
+    private(set) var currentTime: TimeInterval = 0
+    private(set) var duration: TimeInterval = 0
+
     private var player: AVAudioPlayer?
     private var delegate: PlayerDelegate?
+    private var tickTask: Task<Void, Never>?
+
+    static func remainingTime(total: TimeInterval, elapsed: TimeInterval) -> TimeInterval {
+        max(0, total - elapsed)
+    }
 
     func play(url: URL) throws {
         stop()
         let player = try AVAudioPlayer(contentsOf: url)
         let delegate = PlayerDelegate { [weak self] in
-            self?.isPlaying = false
+            self?.handlePlaybackFinished()
         }
         player.delegate = delegate
         self.player = player
         self.delegate = delegate
+        duration = player.duration
+        currentTime = 0
         player.play()
         isPlaying = true
+        startTick()
     }
 
     func stop() {
+        tickTask?.cancel()
+        tickTask = nil
         player?.stop()
         player = nil
         delegate = nil
         isPlaying = false
+        currentTime = 0
+    }
+
+    private func handlePlaybackFinished() {
+        tickTask?.cancel()
+        tickTask = nil
+        isPlaying = false
+        currentTime = duration
+    }
+
+    private func startTick() {
+        tickTask?.cancel()
+        tickTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(100))
+                guard let self, let player = self.player, player.isPlaying else { break }
+                self.currentTime = player.currentTime
+            }
+        }
     }
 
     private final class PlayerDelegate: NSObject, AVAudioPlayerDelegate {

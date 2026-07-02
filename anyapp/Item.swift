@@ -14,9 +14,29 @@ final class Item {
     var textNote: String = ""
     var audioFileName: String?
     var audioDuration: TimeInterval?
+    var lastTranscribedAudioFileName: String?
 
     init(timestamp: Date) {
         self.timestamp = timestamp
+    }
+
+    var needsTranscription: Bool {
+        guard let audioFileName else { return false }
+        return audioFileName != lastTranscribedAudioFileName
+    }
+
+    func appendTextEntry(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let timestamp = Date.now.formatted(.dateTime.day().month().year().hour().minute())
+        let entry = "[\(timestamp)]\n\(trimmed)"
+
+        if textNote.isEmpty {
+            textNote = entry
+        } else {
+            textNote += "\n\n" + entry
+        }
     }
 
     var audioFileURL: URL? {
@@ -29,5 +49,6 @@ final class Item {
         try? FileManager.default.removeItem(at: url)
         audioFileName = nil
         audioDuration = nil
+        lastTranscribedAudioFileName = nil
     }
 }

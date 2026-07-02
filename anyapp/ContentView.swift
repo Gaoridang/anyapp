@@ -14,6 +14,7 @@ struct ContentView: View {
     @Query(sort: \Item.timestamp, order: .reverse) private var items: [Item]
     @State private var selectedItemID: PersistentIdentifier?
     @State private var navigationPath = NavigationPath()
+    @State private var showAPIKeySettings = false
 
     var body: some View {
         if horizontalSizeClass == .compact {
@@ -69,6 +70,14 @@ struct ContentView: View {
         }
         .navigationTitle("메모")
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    showAPIKeySettings = true
+                } label: {
+                    Label("API 설정", systemImage: "key")
+                }
+                .accessibilityIdentifier("apiSettingsButton")
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 EditButton()
             }
@@ -78,6 +87,9 @@ struct ContentView: View {
                 }
                 .accessibilityIdentifier("addMemoButton")
             }
+        }
+        .sheet(isPresented: $showAPIKeySettings) {
+            APIKeySettingsView()
         }
     }
 
