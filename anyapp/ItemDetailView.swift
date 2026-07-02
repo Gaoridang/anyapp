@@ -32,13 +32,25 @@ struct ItemDetailView: View {
     @State private var audioPlayer = AudioPlayer()
     @State private var transcriptionState: TranscriptionState = .idle
     @State private var transcriptionTask: Task<Void, Never>?
-    @State private var sttClient: GrokSTTClient = GrokSTTClient()
+    @State private var sttRouter = STTRouter()
+    @State private var activeTranscriptionProvider: STTProvider?
 
     @FocusState private var isTextFieldFocused: Bool
 
     private var isTranscribing: Bool {
         if case .transcribing = transcriptionState { return true }
         return false
+    }
+
+    private var transcribingStatusText: String {
+        switch activeTranscriptionProvider {
+        case .grok:
+            "Grok 변환 중…"
+        case .onDevice:
+            "기기 변환 중…"
+        case nil:
+            "변환 중…"
+        }
     }
 
     var body: some View {
@@ -137,7 +149,7 @@ struct ItemDetailView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("recordingTimer")
             } else if isTranscribing {
-                Text("변환 중…")
+                Text(transcribingStatusText)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("transcribingLabel")
@@ -417,28 +429,29 @@ struct ItemDetailView: View {
     private func transcribeAudio(fileName: String, fileURL: URL) async {
         guard fileName != item.lastTranscribedAudioFileName else {
             transcriptionState = .idle
+            activeTranscriptionProvider = nil
             return
         }
 
-        guard GrokAPIKeyStore.hasKey else {
-            transcriptionState = .failed(GrokSTTClient.STTError.missingAPIKey.localizedDescription)
-            return
-        }
-
+        let provider = sttRouter.resolvedProvider()
+        activeTranscriptionProvider = provider
         transcriptionState = .transcribing
 
         do {
-            let text = try await sttClient.transcribe(audioFileURL: fileURL)
+            let text = try await sttRouter.transcribe(audioFileURL: fileURL)
             guard !Task.isCancelled else { return }
 
             item.appendTextEntry(text)
             item.lastTranscribedAudioFileName = fileName
             try modelContext.save()
             transcriptionState = .idle
+            activeTranscriptionProvider = nil
         } catch is CancellationError {
             transcriptionState = .idle
+            activeTranscriptionProvider = nil
         } catch {
             transcriptionState = .failed(error.localizedDescription)
+            activeTranscriptionProvider = nil
         }
     }
 
