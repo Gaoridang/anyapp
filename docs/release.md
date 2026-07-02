@@ -29,7 +29,7 @@ Xcode에서 Target → General → Version을 수정하거나, `anyapp.xcodeproj
 
 **자동 관리**
 
-`main`에 앱/배포 관련 변경이 push되면 GitHub Actions가 Fastlane `beta` lane을 실행하고, 빌드 번호를 아래 규칙으로 설정합니다.
+GitHub Actions에서 **TestFlight** 워크플로를 수동 실행하면 Fastlane `beta` lane이 빌드 번호를 아래 규칙으로 설정합니다.
 
 ```
 max(GITHUB_RUN_NUMBER, TestFlight 최신 빌드 번호 + 1)
@@ -37,7 +37,7 @@ max(GITHUB_RUN_NUMBER, TestFlight 최신 빌드 번호 + 1)
 
 로직은 [`fastlane/Fastfile`](../fastlane/Fastfile)의 `next_build_number`에 있습니다.
 
-**수동으로 올리지 않습니다.** CI가 처리합니다. 문서만 변경된 push는 TestFlight 워크플로우를 트리거하지 않습니다.
+**수동으로 올리지 않습니다.** TestFlight 워크플로 실행 시 CI가 처리합니다. `main` push만으로는 TestFlight에 배포되지 않습니다.
 
 ## CI 완료 vs TestFlight 설치 가능
 
@@ -58,8 +58,8 @@ CI는 업로드 직후 완료됩니다 (`skip_waiting_for_build_processing: true
 ## 배포 흐름
 
 ```
-main push (앱/배포 경로 변경 시)
-         → GitHub Actions (TestFlight workflow)
+폰에서 확인할 때
+         → GitHub Actions → TestFlight → Run workflow
          → fastlane beta
          → 빌드 번호 자동 증가
          → 빌드 & TestFlight 업로드
@@ -68,20 +68,22 @@ main push (앱/배포 경로 변경 시)
          → TestFlight에서 설치 가능
 ```
 
+`main`에 코드를 push/merge해도 TestFlight 워크플로는 자동으로 실행되지 않습니다.
+
 ## CI 최적화
 
 TestFlight 워크플로우는 아래 최적화가 적용되어 있습니다.
 
 - **Apple 처리 대기 스킵** — CI는 업로드 직후 완료
 - **DerivedData 캐시** — 2회차 이후 빌드 시간 단축
-- **경로 필터** — `anyapp/`, `fastlane/` 등 배포 관련 변경 시에만 실행
+- **수동 배포** — `workflow_dispatch`로만 실행 (`main` push와 분리)
 - **CI 빌드 플래그** — `ENABLE_PREVIEWS=NO`, `COMPILER_INDEX_STORE_ENABLE=NO`
 - **업로드 스로틀** — 24시간 내 업로드 횟수·최소 간격을 초과하면 빌드/업로드를 건너뜀 (Apple 90382 한도 방지)
 - **90382 처리** — Apple 일일 업로드 한도에 걸리면 CI를 실패로 표시하지 않고 안내 메시지와 함께 종료
 
 ## TestFlight 업로드 한도 (90382)
 
-Apple은 앱당 하루 업로드 횟수에 제한이 있습니다. 짧은 시간에 여러 번 merge하면 `Upload limit reached (90382)` 오류가 날 수 있습니다.
+Apple은 앱당 하루 업로드 횟수에 제한이 있습니다. 짧은 시간에 TestFlight 워크플로를 여러 번 실행하면 `Upload limit reached (90382)` 오류가 날 수 있습니다.
 
 | 상황 | CI 결과 | 조치 |
 |---|---|---|
@@ -98,5 +100,5 @@ Apple은 앱당 하루 업로드 횟수에 제한이 있습니다. 짧은 시간
 
 - [`anyapp.xcodeproj/project.pbxproj`](../anyapp.xcodeproj/project.pbxproj) — `MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`
 - [`fastlane/Fastfile`](../fastlane/Fastfile) — 빌드 번호 자동 증가 로직
-- [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml) — CI 트리거 (경로 필터 + `workflow_dispatch`)
+- [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml) — TestFlight 수동 배포 (`workflow_dispatch`)
 - [`.github/workflows/ci-verify.yml`](../.github/workflows/ci-verify.yml) — CI 설정 검증
