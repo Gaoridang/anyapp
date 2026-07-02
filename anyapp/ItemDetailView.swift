@@ -6,6 +6,7 @@
 import AVFoundation
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct ItemDetailView: View {
     @Environment(\.modelContext) private var modelContext
@@ -105,7 +106,7 @@ struct ItemDetailView: View {
         .accessibilityHint(recorder.canRecord ? "" : "마이크 권한이 필요합니다")
         .disabled(!recorder.isPrepared)
         .opacity(recorder.isPrepared && (recorder.canRecord || recorder.isRecording) ? 1 : 0.45)
-        .animation(.easeInOut(duration: 0.2), value: recorder.isRecording)
+        .animation(nil, value: recorder.isRecording)
     }
 
     @ViewBuilder
@@ -124,6 +125,7 @@ struct ItemDetailView: View {
             }
         }
         .frame(height: 60)
+        .animation(nil, value: recorder.isRecording)
     }
 
     @ViewBuilder
@@ -229,10 +231,19 @@ struct ItemDetailView: View {
 
     private func toggleRecording() {
         if recorder.isRecording {
+            triggerRecordingHaptic(isStarting: false)
             finishRecording()
             return
         }
+        triggerRecordingHaptic(isStarting: true)
         startRecording()
+    }
+
+    private func triggerRecordingHaptic(isStarting: Bool) {
+        let style: UIImpactFeedbackGenerator.FeedbackStyle = isStarting ? .medium : .rigid
+        let generator = UIImpactFeedbackGenerator(style: style)
+        generator.prepare()
+        generator.impactOccurred()
     }
 
     private func startRecording() {
