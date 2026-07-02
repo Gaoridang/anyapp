@@ -212,7 +212,6 @@ struct ItemDetailView: View {
                     .font(.system(.title3, design: .rounded, weight: .medium))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
-                    .contentTransition(.numericText())
                     .accessibilityIdentifier("recordingTimer")
             } else if let duration = item.audioDuration {
                 playbackControls(duration: duration)
@@ -337,7 +336,13 @@ struct ItemDetailView: View {
             let isSmoke = ProcessInfo.processInfo.environment["FINISH_SMOKE"] != nil
             if !isSmoke, let savedURL = item.audioFileURL {
                 transcriptionTask?.cancel()
-                transcriptionTask = Task { await processTranscription(from: savedURL) }
+                transcriptionTask = Task { @MainActor in
+                    // Defer so stop UI + audio session teardown finish before Speech runs.
+                    await Task.yield()
+                    try? await Task.sleep(for: .milliseconds(300))
+                    guard !Task.isCancelled else { return }
+                    await processTranscription(from: savedURL)
+                }
             }
         } else if let fileName = pending {
             let url = AudioFileStore.documentsDirectory.appendingPathComponent(fileName)

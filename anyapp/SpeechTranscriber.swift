@@ -55,7 +55,7 @@ enum SpeechTranscriber {
                 // task reference is never mutated concurrently from two threads.
                 let task = recognizer.recognitionTask(with: request) { result, error in
                     if let error {
-                        session.finish(.failure(error))
+                        session.complete(.failure(error))
                         return
                     }
 
@@ -64,13 +64,13 @@ enum SpeechTranscriber {
                     let text = result.bestTranscription.formattedString
                         .trimmingCharacters(in: .whitespacesAndNewlines)
 
-                    session.finish(text.isEmpty ? .failure(TranscriptionError.emptyResult) : .success(text))
+                    session.complete(text.isEmpty ? .failure(TranscriptionError.emptyResult) : .success(text))
                 }
 
                 session.store(task)
             }
         } onCancel: {
-            session.finish(.failure(CancellationError()))
+            session.cancel()
         }
     }
 
@@ -121,8 +121,20 @@ private final class RecognitionSession: @unchecked Sendable {
         }
     }
 
-    /// Resumes the continuation at most once and releases the task reference.
-    func finish(_ result: Result<String, Error>) {
+    /// Called from the Speech framework's recognition callback. Never cancel the
+    /// task here — canceling the task from inside its own handler crashes.
+    func complete(_ result: Result<String, Error>) {
+        lock.lock()
+        let continuation = self.continuation
+        self.continuation = nil
+        self.task = nil
+        lock.unlock()
+
+        continuation?.resume(with: result)
+    }
+
+    /// Called from task cancellation outside the recognition callback.
+    func cancel() {
         lock.lock()
         let continuation = self.continuation
         self.continuation = nil
@@ -131,6 +143,6 @@ private final class RecognitionSession: @unchecked Sendable {
         lock.unlock()
 
         task?.cancel()
-        continuation?.resume(with: result)
+        continuation?.resume(throwing: CancellationError())
     }
 }
