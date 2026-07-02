@@ -74,7 +74,7 @@ struct ContentView: View {
                 Button {
                     showAPIKeySettings = true
                 } label: {
-                    Label("API 설정", systemImage: "key")
+                    Label("설정", systemImage: "key")
                 }
                 .accessibilityIdentifier("apiSettingsButton")
             }
