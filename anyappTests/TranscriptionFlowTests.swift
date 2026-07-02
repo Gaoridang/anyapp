@@ -43,6 +43,24 @@ struct TranscriptionFlowTests {
         #expect(!item.needsTranscription)
     }
 
+    @Test func deleteAudioFileClearsTranscriptionTracking() throws {
+        let item = Item(timestamp: .now)
+        let fileName = "test-delete.m4a"
+        let url = AudioFileStore.documentsDirectory.appendingPathComponent(fileName)
+        try Data().write(to: url)
+
+        item.audioFileName = fileName
+        item.audioDuration = 1.0
+        item.lastTranscribedAudioFileName = fileName
+
+        item.deleteAudioFile()
+
+        #expect(item.audioFileName == nil)
+        #expect(item.audioDuration == nil)
+        #expect(item.lastTranscribedAudioFileName == nil)
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+
     @Test func reRecordPreservesTextWhileReplacingAudioMetadata() {
         let item = Item(timestamp: .now)
         item.audioFileName = "old.m4a"

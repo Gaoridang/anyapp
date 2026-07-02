@@ -83,6 +83,7 @@ struct ItemDetailView: View {
         }
         .task {
             await recorder.prepare()
+            resumePendingTranscriptionIfNeeded()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
@@ -344,6 +345,11 @@ struct ItemDetailView: View {
 
     private func retryTranscription() {
         guard let fileName = item.audioFileName else { return }
+        startTranscription(for: fileName)
+    }
+
+    private func resumePendingTranscriptionIfNeeded() {
+        guard item.needsTranscription, let fileName = item.audioFileName else { return }
         startTranscription(for: fileName)
     }
 

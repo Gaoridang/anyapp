@@ -49,5 +49,6 @@ final class Item {
         try? FileManager.default.removeItem(at: url)
         audioFileName = nil
         audioDuration = nil
+        lastTranscribedAudioFileName = nil
     }
 }
