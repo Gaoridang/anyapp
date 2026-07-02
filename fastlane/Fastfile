@@ -1,12 +1,5 @@
 default_platform(:ios)
 
-def build_uploaded_at(build)
-  raw = build.uploaded_date || build.uploadedDate
-  return nil unless raw
-
-  Time.parse(raw.to_s)
-end
-
 platform :ios do
   before_all do
     setup_ci if ENV["CI"]
@@ -141,9 +134,12 @@ platform :ios do
     nil
   end
 
-  # 빌드 번호 = max(GITHUB_RUN_NUMBER, TestFlight 최신 빌드 + 1)
+  # 빌드 번호 = TARGET_BUILD_NUMBER(선택) 또는 max(GITHUB_RUN_NUMBER, TestFlight 최신 빌드 + 1)
   # 자세한 정책은 docs/release.md 참고
   private_lane :next_build_number do |options|
+    explicit = ENV["TARGET_BUILD_NUMBER"]&.strip
+    next explicit.to_i if explicit && !explicit.empty?
+
     api_key = options[:api_key]
     run_number = ENV.fetch("GITHUB_RUN_NUMBER", "0").to_i
     latest = latest_testflight_build_number(
@@ -152,51 +148,6 @@ platform :ios do
       initial_build_number: 0
     )
     [run_number, latest + 1].max
-  end
-
-  private_lane :recent_testflight_builds do
-    Spaceship::ConnectAPI.token = connect_api_token
-
-    app = Spaceship::ConnectAPI::App.find("com.ijaejun.anyapp")
-    next [] unless app
-
-    Spaceship::ConnectAPI::Build.all(
-      app_id: app.id,
-      sort: "-uploadedDate",
-      limit: 30
-    )
-  end
-
-  # Apple 일일 업로드 한도(90382)를 피하기 위해 CI에서 업로드 간격·횟수를 제한합니다.
-  private_lane :testflight_upload_skip_reason do
-    next nil if ENV["FORCE_TESTFLIGHT_UPLOAD"] == "true"
-    next nil unless ENV["CI"]
-
-    builds = recent_testflight_builds
-    next nil if builds.empty?
-
-    now = Time.now
-    cutoff_24h = now - (24 * 3600)
-    uploads_last_24h = builds.count do |build|
-      uploaded_at = build_uploaded_at(build)
-      uploaded_at && uploaded_at > cutoff_24h
-    end
-
-    max_per_day = ENV.fetch("TESTFLIGHT_MAX_UPLOADS_PER_24H", "8").to_i
-    if uploads_last_24h >= max_per_day
-      next "already uploaded #{uploads_last_24h} builds in the last 24 hours (limit: #{max_per_day})"
-    end
-
-    latest_upload = builds.lazy.filter_map { |build| build_uploaded_at(build) }.first
-    next nil unless latest_upload
-
-    min_interval = ENV.fetch("TESTFLIGHT_MIN_UPLOAD_INTERVAL_MINUTES", "20").to_i
-    minutes_since = (now - latest_upload) / 60.0
-    if minutes_since < min_interval
-      next "last upload was #{minutes_since.round} minutes ago (minimum interval: #{min_interval} minutes)"
-    end
-
-    nil
   end
 
   private_lane :upload_to_testflight_safely do |options|
@@ -222,12 +173,6 @@ platform :ios do
   desc "Build and upload a beta build to TestFlight"
   lane :beta do
     api_key = asc_api_key
-
-    if (skip_reason = testflight_upload_skip_reason)
-      UI.important("TestFlight deploy skipped before build: #{skip_reason}")
-      UI.success("CI completed without build or upload.")
-      next
-    end
 
     profile_name = configure_signing(api_key: api_key)
 
