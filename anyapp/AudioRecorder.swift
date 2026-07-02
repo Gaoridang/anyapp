@@ -75,7 +75,7 @@ final class AVAudioRecorderEngine: RecordingEngine {
 
     init(url: URL, settings: [String: Any]) throws {
         recorder = try AVAudioRecorder(url: url, settings: settings)
-        recorder.prepareToRecord()
+        _ = recorder.prepareToRecord()
     }
 
     var currentTime: TimeInterval { recorder.currentTime }
