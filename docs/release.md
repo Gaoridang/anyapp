@@ -76,6 +76,23 @@ TestFlight 워크플로우는 아래 최적화가 적용되어 있습니다.
 - **DerivedData 캐시** — 2회차 이후 빌드 시간 단축
 - **경로 필터** — `anyapp/`, `fastlane/` 등 배포 관련 변경 시에만 실행
 - **CI 빌드 플래그** — `ENABLE_PREVIEWS=NO`, `COMPILER_INDEX_STORE_ENABLE=NO`
+- **업로드 스로틀** — 24시간 내 업로드 횟수·최소 간격을 초과하면 빌드/업로드를 건너뜀 (Apple 90382 한도 방지)
+- **90382 처리** — Apple 일일 업로드 한도에 걸리면 CI를 실패로 표시하지 않고 안내 메시지와 함께 종료
+
+## TestFlight 업로드 한도 (90382)
+
+Apple은 앱당 하루 업로드 횟수에 제한이 있습니다. 짧은 시간에 여러 번 merge하면 `Upload limit reached (90382)` 오류가 날 수 있습니다.
+
+| 상황 | CI 결과 | 조치 |
+|---|---|---|
+| 스로틀에 걸림 (최근 업로드 많음) | 성공 (업로드 생략) | 한도가 풀린 뒤 Actions에서 **TestFlight** 워크플로 → **Run workflow** → `force_upload` 체크 |
+| 90382 (Apple 일일 한도) | 성공 (업로드 생략) | 24시간 후 `force_upload`로 재시도 |
+
+환경 변수 (Fastfile 기본값):
+
+- `TESTFLIGHT_MAX_UPLOADS_PER_24H` — 기본 `8`
+- `TESTFLIGHT_MIN_UPLOAD_INTERVAL_MINUTES` — 기본 `20`
+- `FORCE_TESTFLIGHT_UPLOAD=true` — 스로틀 무시 (수동 재배포용)
 
 ## 관련 파일
 

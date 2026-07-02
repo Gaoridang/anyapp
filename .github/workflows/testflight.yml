@@ -14,6 +14,12 @@ on:
       - "Gemfile.lock"
       - ".github/workflows/testflight.yml"
   workflow_dispatch:
+    inputs:
+      force_upload:
+        description: "Ignore upload throttle and force TestFlight upload"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: testflight-${{ github.ref }}
@@ -67,3 +73,4 @@ jobs:
           ASC_KEY_PATH: ${{ env.ASC_KEY_PATH }}
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
           DERIVED_DATA_CACHE_HIT: ${{ steps.deriveddata-cache.outputs.cache-hit }}
+          FORCE_TESTFLIGHT_UPLOAD: ${{ github.event_name == 'workflow_dispatch' && inputs.force_upload && 'true' || '' }}

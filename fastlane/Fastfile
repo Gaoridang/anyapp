@@ -147,9 +147,88 @@ platform :ios do
     [run_number, latest + 1].max
   end
 
+  private_lane :recent_testflight_builds do
+    Spaceship::ConnectAPI.token = connect_api_token
+
+    app = Spaceship::ConnectAPI::App.find("com.ijaejun.anyapp")
+    next [] unless app
+
+    Spaceship::ConnectAPI::Build.all(
+      app_id: app.id,
+      sort: "-uploadedDate",
+      limit: 30
+    )
+  end
+
+  private_lane :build_uploaded_at do |build|
+    raw = build.uploaded_date || build.uploadedDate
+    next nil unless raw
+
+    Time.parse(raw.to_s)
+  end
+
+  # Apple 일일 업로드 한도(90382)를 피하기 위해 CI에서 업로드 간격·횟수를 제한합니다.
+  private_lane :testflight_upload_skip_reason do
+    next nil if ENV["FORCE_TESTFLIGHT_UPLOAD"] == "true"
+    next nil unless ENV["CI"]
+
+    builds = recent_testflight_builds
+    next nil if builds.empty?
+
+    now = Time.now
+    cutoff_24h = now - (24 * 3600)
+    uploads_last_24h = builds.count do |build|
+      uploaded_at = build_uploaded_at(build)
+      uploaded_at && uploaded_at > cutoff_24h
+    end
+
+    max_per_day = ENV.fetch("TESTFLIGHT_MAX_UPLOADS_PER_24H", "8").to_i
+    if uploads_last_24h >= max_per_day
+      next "already uploaded #{uploads_last_24h} builds in the last 24 hours (limit: #{max_per_day})"
+    end
+
+    latest_upload = builds.lazy.filter_map { |build| build_uploaded_at(build) }.first
+    next nil unless latest_upload
+
+    min_interval = ENV.fetch("TESTFLIGHT_MIN_UPLOAD_INTERVAL_MINUTES", "20").to_i
+    minutes_since = (now - latest_upload) / 60.0
+    if minutes_since < min_interval
+      next "last upload was #{minutes_since.round} minutes ago (minimum interval: #{min_interval} minutes)"
+    end
+
+    nil
+  end
+
+  private_lane :upload_to_testflight_safely do |options|
+    upload_to_testflight(
+      api_key: options[:api_key],
+      skip_waiting_for_build_processing: true,
+      distribute_external: false,
+      uses_non_exempt_encryption: false
+    )
+  rescue => error
+    message = error.message.to_s
+    if message.include?("90382") || message.include?("Upload limit reached")
+      UI.important(
+        "TestFlight upload skipped: Apple daily upload limit reached (90382). " \
+        "Re-run the workflow with force_upload after the limit resets."
+      )
+      next
+    end
+
+    raise error
+  end
+
   desc "Build and upload a beta build to TestFlight"
   lane :beta do
     api_key = asc_api_key
+
+    if (skip_reason = testflight_upload_skip_reason)
+      UI.important("TestFlight deploy skipped before build: #{skip_reason}")
+      UI.success("CI completed without build or upload.")
+      next
+    end
+
     profile_name = configure_signing(api_key: api_key)
 
     increment_build_number(
@@ -201,11 +280,6 @@ platform :ios do
 
     build_app(build_options)
 
-    upload_to_testflight(
-      api_key: api_key,
-      skip_waiting_for_build_processing: true,
-      distribute_external: false,
-      uses_non_exempt_encryption: false
-    )
+    upload_to_testflight_safely(api_key: api_key)
   end
 end
