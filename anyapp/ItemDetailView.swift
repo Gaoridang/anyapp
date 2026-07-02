@@ -52,12 +52,6 @@ struct ItemDetailView: View {
         .overlay(alignment: .bottom) { bottomHint }
         .navigationTitle(item.timestamp.formatted(.dateTime.day().month().year().hour().minute()))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("저장", action: saveMemo)
-                    .disabled(!hasUnsavedChanges)
-            }
-        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             inputToolbar
         }
@@ -172,6 +166,11 @@ struct ItemDetailView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
+
+            Button("저장", action: saveMemo)
+                .font(.body.weight(.semibold))
+                .disabled(!hasUnsavedChanges)
+                .accessibilityIdentifier("saveMemoButton")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -340,10 +339,14 @@ struct ItemDetailView: View {
     private func appendDraftToNote() {
         let trimmed = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+
+        let timestamp = Date.now.formatted(.dateTime.day().month().year().hour().minute())
+        let entry = "[\(timestamp)]\n\(trimmed)"
+
         if item.textNote.isEmpty {
-            item.textNote = trimmed
+            item.textNote = entry
         } else {
-            item.textNote += "\n" + trimmed
+            item.textNote += "\n\n" + entry
         }
         draftText = ""
         hasUnsavedChanges = false
