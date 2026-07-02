@@ -137,6 +137,13 @@ struct ItemDetailView: View {
                 .font(.body)
                 .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16)
+                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                }
                 .padding(.horizontal, 20)
                 .textSelection(.enabled)
         }
