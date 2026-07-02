@@ -89,8 +89,7 @@ final class AVAudioRecorderEngine: RecordingEngine {
 ///
 /// Design principle: `stopRecording()` performs *only* synchronous audio-resource
 /// teardown and never triggers speech recognition, network calls, or any other
-/// async pipeline. Consumers run transcription separately against the finished
-/// file so that stopping can never crash from cross-subsystem interaction.
+/// async pipeline. Consumers persist the finished file separately.
 @Observable
 @MainActor
 final class AudioRecorder {

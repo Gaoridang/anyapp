@@ -85,6 +85,7 @@ struct ContentView: View {
         withAnimation {
             let newItem = Item(timestamp: Date())
             modelContext.insert(newItem)
+            try? modelContext.save()
             selectedItemID = newItem.persistentModelID
             if horizontalSizeClass == .compact {
                 navigationPath.append(newItem.persistentModelID)

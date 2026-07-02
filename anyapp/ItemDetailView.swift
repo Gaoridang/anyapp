@@ -18,26 +18,11 @@ struct ItemDetailView: View {
     @State private var hasUnsavedChanges = false
     @State private var showSaveConfirmation = false
     @State private var saveErrorMessage: String?
-    @State private var transcriptionErrorMessage: String?
     @State private var recordingErrorMessage: String?
-    @State private var processingStatus: ProcessingStatus?
-    @State private var transcriptionTask: Task<Void, Never>?
 
     @State private var audioPlayer = AudioPlayer()
 
     @FocusState private var isTextFieldFocused: Bool
-
-    private enum ProcessingStatus {
-        case transcribing
-        case correcting
-
-        var label: String {
-            switch self {
-            case .transcribing: "음성을 텍스트로 변환 중..."
-            case .correcting: "텍스트 보정 중..."
-            }
-        }
-    }
 
     var body: some View {
         ScrollView {
@@ -48,16 +33,6 @@ struct ItemDetailView: View {
                 belowMicSlot
 
                 savedNoteSection
-
-                if let processingStatus {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                        Text(processingStatus.label)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal)
-                }
 
                 Spacer(minLength: 40)
             }
@@ -88,7 +63,6 @@ struct ItemDetailView: View {
         }
         .overlay(alignment: .top) { topBanner }
         .animation(.easeInOut(duration: 0.2), value: showSaveConfirmation)
-        .animation(.easeInOut(duration: 0.2), value: transcriptionErrorMessage)
         .animation(.easeInOut(duration: 0.2), value: recordingErrorMessage)
         .alert("저장 실패", isPresented: Binding(
             get: { saveErrorMessage != nil },
@@ -100,9 +74,6 @@ struct ItemDetailView: View {
         }
         .task {
             await recorder.prepare()
-        }
-        .task {
-            _ = await SpeechTranscriber.requestAuthorization()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
@@ -138,16 +109,9 @@ struct ItemDetailView: View {
         .accessibilityIdentifier("micButton")
         .accessibilityLabel(recorder.isRecording ? "녹음 중지" : "녹음 시작")
         .accessibilityHint(recorder.canRecord ? "" : "마이크 권한이 필요합니다")
-        .disabled(!recorder.isPrepared || (processingStatus != nil && !recorder.isRecording))
-        .opacity(micButtonOpacity)
+        .disabled(!recorder.isPrepared)
+        .opacity(recorder.isPrepared && (recorder.canRecord || recorder.isRecording) ? 1 : 0.45)
         .animation(.easeInOut(duration: 0.2), value: recorder.isRecording)
-    }
-
-    private var micButtonOpacity: Double {
-        let usable = recorder.isPrepared
-            && (recorder.canRecord || recorder.isRecording)
-            && (processingStatus == nil || recorder.isRecording)
-        return usable ? 1 : 0.45
     }
 
     @ViewBuilder
@@ -246,8 +210,6 @@ struct ItemDetailView: View {
                 .background(.ultraThinMaterial, in: Capsule())
                 .padding(.top, 8)
                 .transition(.move(edge: .top).combined(with: .opacity))
-        } else if let transcriptionErrorMessage {
-            banner(transcriptionErrorMessage)
         } else if case .error(let message) = recorder.state {
             banner(message)
         }
@@ -308,8 +270,7 @@ struct ItemDetailView: View {
         }
     }
 
-    /// Stops recording and, only after teardown, kicks off a separate transcription
-    /// task. Stopping itself performs no speech/async work, so it cannot crash.
+    /// Stops recording and persists audio metadata. No speech or async follow-up work.
     private func finishRecording() {
         guard recorder.isRecording else { return }
 
@@ -330,59 +291,6 @@ struct ItemDetailView: View {
         item.audioFileName = pending
         item.audioDuration = duration
         try? modelContext.save()
-
-        guard let savedURL = item.audioFileURL else { return }
-        startTranscription(from: savedURL)
-    }
-
-    private func startTranscription(from url: URL) {
-        transcriptionTask?.cancel()
-        transcriptionTask = Task { @MainActor in
-            // Let the stop UI update and audio-session teardown settle first.
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            await processTranscription(from: url)
-        }
-    }
-
-    private func processTranscription(from url: URL) async {
-        guard !Task.isCancelled else { return }
-
-        transcriptionErrorMessage = nil
-        processingStatus = .transcribing
-
-        do {
-            let rawText = try await SpeechTranscriber.transcribe(url: url)
-            guard !Task.isCancelled else {
-                processingStatus = nil
-                return
-            }
-
-            processingStatus = .correcting
-            let corrected = await TextCorrector.correct(rawText)
-            guard !Task.isCancelled else {
-                processingStatus = nil
-                return
-            }
-
-            appendToNote(corrected)
-            try modelContext.save()
-        } catch is CancellationError {
-            // Silent: user navigated away or restarted recording.
-        } catch {
-            guard !Task.isCancelled else {
-                processingStatus = nil
-                return
-            }
-            transcriptionErrorMessage = (error as? LocalizedError)?.errorDescription
-                ?? "음성을 텍스트로 변환하지 못했습니다."
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(3))
-                transcriptionErrorMessage = nil
-            }
-        }
-
-        processingStatus = nil
     }
 
     // MARK: - Playback
@@ -432,24 +340,18 @@ struct ItemDetailView: View {
     private func appendDraftToNote() {
         let trimmed = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        appendToNote(trimmed)
+        if item.textNote.isEmpty {
+            item.textNote = trimmed
+        } else {
+            item.textNote += "\n" + trimmed
+        }
         draftText = ""
         hasUnsavedChanges = false
-    }
-
-    private func appendToNote(_ text: String) {
-        if item.textNote.isEmpty {
-            item.textNote = text
-        } else {
-            item.textNote += "\n" + text
-        }
     }
 
     // MARK: - Lifecycle
 
     private func teardown() {
-        transcriptionTask?.cancel()
-        transcriptionTask = nil
         recorder.stopRecording()
         audioPlayer.stop()
         recorder.deactivatePlaybackSession()
