@@ -10,12 +10,14 @@ import Testing
 
 @MainActor
 struct RecordingIntegrationTests {
+    /// Exercises the real AVAudioRecorder start/stop path — the historical crash
+    /// area. Skips gracefully when the test host has no microphone permission.
     @Test func liveRecorderStartStopProducesNonEmptyFile() async throws {
         let recorder = AudioRecorder()
         await recorder.prepare()
 
         guard recorder.canRecord else {
-            Issue.record("Microphone permission not granted in test environment — skipping live capture")
+            Issue.record("Microphone permission not granted — skipping live capture")
             return
         }
 
@@ -26,18 +28,15 @@ struct RecordingIntegrationTests {
         #expect(recorder.state == .recording)
 
         try await Task.sleep(for: .milliseconds(500))
-        #expect(recorder.elapsedTime >= 0)
 
         let duration = recorder.stopRecording()
+        #expect(recorder.state == .idle)
         #expect(duration != nil)
-        #expect(duration! > 0)
+        #expect((duration ?? 0) > 0)
 
-        let fileExists = FileManager.default.fileExists(atPath: url.path)
-        #expect(fileExists)
-
-        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-        let fileSize = attributes[.size] as? UInt64 ?? 0
-        #expect(fileSize > 0)
+        #expect(FileManager.default.fileExists(atPath: url.path))
+        let size = (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? UInt64) ?? 0
+        #expect(size > 0)
 
         try? FileManager.default.removeItem(at: url)
     }

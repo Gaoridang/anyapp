@@ -10,13 +10,16 @@ final class RecordingUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    /// End-to-end coverage of the record → timer → stop → playback flow. Stopping
+    /// is the historical crash point, so reaching the playback button after a stop
+    /// verifies the app stays alive through teardown.
     @MainActor
-    func testMicButtonShowsRecordingTimer() throws {
+    func testRecordThenStopSurvivesAndShowsPlayback() throws {
         let app = XCUIApplication()
         app.launchArguments += ["-AppleSimulatorMicrophoneEnabled", "YES"]
         app.launch()
 
-        addUIInterruptionMonitor(withDescription: "Microphone permission") { alert in
+        addUIInterruptionMonitor(withDescription: "Permission") { alert in
             for title in ["Allow", "허용", "OK", "확인"] {
                 let button = alert.buttons[title]
                 if button.exists {
@@ -34,12 +37,8 @@ final class RecordingUITests: XCTestCase {
         let micButton = app.buttons["micButton"]
         XCTAssertTrue(micButton.waitForExistence(timeout: 8))
 
-        let enabledMic = micButton.wait(
-            for: \.isEnabled,
-            toEqual: { $0 },
-            timeout: 8
-        )
-        XCTAssertTrue(enabledMic, "Mic button should become enabled after prepare()")
+        let enabled = micButton.wait(for: \.isEnabled, toEqual: { $0 }, timeout: 8)
+        XCTAssertTrue(enabled, "Mic button should become enabled after prepare()")
 
         app.tap()
         micButton.tap()
@@ -53,7 +52,7 @@ final class RecordingUITests: XCTestCase {
             return
         }
 
-        let timerUpdated = recordingTimer.wait(
+        let advanced = recordingTimer.wait(
             for: \.label,
             toEqual: { label in
                 guard let seconds = Self.parseSeconds(from: label) else { return false }
@@ -61,12 +60,12 @@ final class RecordingUITests: XCTestCase {
             },
             timeout: 4
         )
-        XCTAssertTrue(timerUpdated, "Timer should advance while recording; started at \(initialLabel)")
+        XCTAssertTrue(advanced, "Timer should advance while recording; started at \(initialLabel)")
 
         micButton.tap()
 
         let playbackButton = app.buttons["playbackButton"]
-        XCTAssertTrue(playbackButton.waitForExistence(timeout: 8))
+        XCTAssertTrue(playbackButton.waitForExistence(timeout: 8), "App should survive stop and show playback")
     }
 
     private static func parseSeconds(from label: String) -> Int? {

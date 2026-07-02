@@ -5,6 +5,11 @@
 
 import Speech
 
+/// On-device/served speech-to-text for a finished audio file.
+///
+/// This never touches the audio session — it operates purely on a file URL that
+/// has already been written and closed by `AudioRecorder`. Crash safety around
+/// the Speech framework's background callbacks is handled by `RecognitionSession`.
 enum SpeechTranscriber {
     enum TranscriptionError: LocalizedError {
         case notAuthorized
@@ -49,10 +54,10 @@ enum SpeechTranscriber {
                 let request = SFSpeechURLRecognitionRequest(url: url)
                 request.shouldReportPartialResults = false
 
-                // The completion handler is invoked on a background queue owned by the
-                // Speech framework. All access to the recognition task and the
-                // continuation must be funneled through RecognitionSession so that the
-                // task reference is never mutated concurrently from two threads.
+                // This handler runs on a Speech-owned background queue. All access to
+                // the task/continuation must go through RecognitionSession so the task
+                // reference is never mutated concurrently and the continuation resumes
+                // exactly once.
                 let task = recognizer.recognitionTask(with: request) { result, error in
                     if let error {
                         session.complete(.failure(error))
@@ -64,7 +69,9 @@ enum SpeechTranscriber {
                     let text = result.bestTranscription.formattedString
                         .trimmingCharacters(in: .whitespacesAndNewlines)
 
-                    session.complete(text.isEmpty ? .failure(TranscriptionError.emptyResult) : .success(text))
+                    session.complete(text.isEmpty
+                        ? .failure(TranscriptionError.emptyResult)
+                        : .success(text))
                 }
 
                 session.store(task)
@@ -75,13 +82,13 @@ enum SpeechTranscriber {
     }
 
     private nonisolated static func preferredRecognizer() -> SFSpeechRecognizer? {
-        let preferredLocales = [
+        let locales = [
             Locale(identifier: "ko-KR"),
             Locale.current,
             Locale(identifier: "en-US"),
         ]
 
-        for locale in preferredLocales {
+        for locale in locales {
             if let recognizer = SFSpeechRecognizer(locale: locale), recognizer.isAvailable {
                 return recognizer
             }
@@ -93,11 +100,11 @@ enum SpeechTranscriber {
 
 /// Thread-safe coordinator for a single `SFSpeechRecognitionTask`.
 ///
-/// The Speech framework invokes recognition callbacks on its own background queue,
-/// while the task is created and stored from the caller's context. Guarding every
-/// access with a lock prevents the concurrent mutation of the task reference (a data
-/// race that could over-release the task and crash), and guarantees the checked
-/// continuation is resumed exactly once.
+/// The Speech framework invokes recognition callbacks on its own background queue
+/// while the task is created/stored from the caller's context. Every access is
+/// guarded by a lock so the task reference can never be mutated concurrently (a
+/// data race that could over-release the task and crash), and the checked
+/// continuation is guaranteed to resume exactly once.
 private final class RecognitionSession: @unchecked Sendable {
     private let lock = NSLock()
     private var task: SFSpeechRecognitionTask?
@@ -109,20 +116,19 @@ private final class RecognitionSession: @unchecked Sendable {
         self.continuation = continuation
     }
 
-    /// Stores the recognition task, or cancels it immediately if the session has
-    /// already finished (e.g. the callback fired before the task was assigned).
+    /// Stores the task, or cancels it immediately if the session already finished
+    /// (e.g. the callback fired before the task was assigned).
     func store(_ task: SFSpeechRecognitionTask) {
         lock.lock()
-        defer { lock.unlock() }
-        if continuation == nil {
-            task.cancel()
-        } else {
-            self.task = task
-        }
+        let alreadyFinished = continuation == nil
+        if !alreadyFinished { self.task = task }
+        lock.unlock()
+
+        if alreadyFinished { task.cancel() }
     }
 
-    /// Called from the Speech framework's recognition callback. Never cancel the
-    /// task here — canceling the task from inside its own handler crashes.
+    /// Called from the Speech recognition callback. Never cancel the task here —
+    /// canceling a task from inside its own handler crashes.
     func complete(_ result: Result<String, Error>) {
         lock.lock()
         let continuation = self.continuation
@@ -133,7 +139,7 @@ private final class RecognitionSession: @unchecked Sendable {
         continuation?.resume(with: result)
     }
 
-    /// Called from task cancellation outside the recognition callback.
+    /// Called from cooperative cancellation outside the recognition callback.
     func cancel() {
         lock.lock()
         let continuation = self.continuation

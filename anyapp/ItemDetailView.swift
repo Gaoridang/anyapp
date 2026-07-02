@@ -11,14 +11,8 @@ struct ItemDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @Bindable var item: Item
-    @State private var recorder: AudioRecorder
+    @State private var recorder = AudioRecorder()
 
-    init(item: Item, injectedRecorder: AudioRecorder? = nil) {
-        self.item = item
-        _recorder = State(initialValue: injectedRecorder ?? AudioRecorder())
-    }
-    @State private var player: AVAudioPlayer?
-    @State private var isPlaying = false
     @State private var pendingRecordingFileName: String?
     @State private var draftText = ""
     @State private var hasUnsavedChanges = false
@@ -28,6 +22,9 @@ struct ItemDetailView: View {
     @State private var recordingErrorMessage: String?
     @State private var processingStatus: ProcessingStatus?
     @State private var transcriptionTask: Task<Void, Never>?
+
+    @State private var audioPlayer = AudioPlayer()
+
     @FocusState private var isTextFieldFocused: Bool
 
     private enum ProcessingStatus {
@@ -77,23 +74,7 @@ struct ItemDetailView: View {
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemGroupedBackground))
-        .overlay(alignment: .bottom) {
-            if let recordingErrorMessage {
-                Text(recordingErrorMessage)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-                    .padding(.bottom, 100)
-            } else if case .permissionDenied = recorder.state {
-                Text("마이크를 사용할 수 없습니다.\n아래 입력창으로 메모를 작성하세요.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-                    .padding(.bottom, 100)
-            }
-        }
+        .overlay(alignment: .bottom) { bottomHint }
         .navigationTitle(item.timestamp.formatted(.dateTime.day().month().year().hour().minute()))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -105,35 +86,7 @@ struct ItemDetailView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             inputToolbar
         }
-        .overlay(alignment: .top) {
-            if showSaveConfirmation {
-                Text("저장됨")
-                    .font(.subheadline.weight(.medium))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .padding(.top, 8)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            } else if let transcriptionErrorMessage {
-                Text(transcriptionErrorMessage)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-                    .padding(.top, 8)
-            } else if case .error(let message) = recorder.state {
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-                    .padding(.top, 8)
-            }
-        }
+        .overlay(alignment: .top) { topBanner }
         .animation(.easeInOut(duration: 0.2), value: showSaveConfirmation)
         .animation(.easeInOut(duration: 0.2), value: transcriptionErrorMessage)
         .animation(.easeInOut(duration: 0.2), value: recordingErrorMessage)
@@ -159,24 +112,10 @@ struct ItemDetailView: View {
         .onChange(of: draftText) {
             hasUnsavedChanges = !draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-        .onDisappear {
-            transcriptionTask?.cancel()
-            transcriptionTask = nil
-            finishRecordingIfNeeded()
-            stopPlayback()
-            if hasUnsavedChanges {
-                appendDraftToNote()
-                try? modelContext.save()
-            }
-        }
-        #if DEBUG
-        .task(id: ProcessInfo.processInfo.environment["FINISH_SMOKE"]) {
-            if let mode = ProcessInfo.processInfo.environment["FINISH_SMOKE"] {
-                await runIntegratedFinishSmoke(mode: mode)
-            }
-        }
-        #endif
+        .onDisappear(perform: teardown)
     }
+
+    // MARK: - Subviews
 
     private var micButton: some View {
         Button(action: toggleRecording) {
@@ -200,8 +139,15 @@ struct ItemDetailView: View {
         .accessibilityLabel(recorder.isRecording ? "녹음 중지" : "녹음 시작")
         .accessibilityHint(recorder.canRecord ? "" : "마이크 권한이 필요합니다")
         .disabled(!recorder.isPrepared || (processingStatus != nil && !recorder.isRecording))
-        .opacity(recorder.isPrepared && (recorder.canRecord || recorder.isRecording) && (processingStatus == nil || recorder.isRecording) ? 1 : 0.45)
+        .opacity(micButtonOpacity)
         .animation(.easeInOut(duration: 0.2), value: recorder.isRecording)
+    }
+
+    private var micButtonOpacity: Double {
+        let usable = recorder.isPrepared
+            && (recorder.canRecord || recorder.isRecording)
+            && (processingStatus == nil || recorder.isRecording)
+        return usable ? 1 : 0.45
     }
 
     @ViewBuilder
@@ -237,7 +183,7 @@ struct ItemDetailView: View {
     private func playbackControls(duration: TimeInterval) -> some View {
         HStack(spacing: 16) {
             Button(action: togglePlayback) {
-                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                Image(systemName: audioPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                     .font(.system(size: 36))
                     .foregroundStyle(.tint)
             }
@@ -272,27 +218,78 @@ struct ItemDetailView: View {
         }
     }
 
+    @ViewBuilder
+    private var bottomHint: some View {
+        if let recordingErrorMessage {
+            hintText(recordingErrorMessage)
+        } else if case .permissionDenied = recorder.state {
+            hintText("마이크를 사용할 수 없습니다.\n아래 입력창으로 메모를 작성하세요.")
+        }
+    }
+
+    private func hintText(_ message: String) -> some View {
+        Text(message)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal)
+            .padding(.bottom, 100)
+    }
+
+    @ViewBuilder
+    private var topBanner: some View {
+        if showSaveConfirmation {
+            Text("저장됨")
+                .font(.subheadline.weight(.medium))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.top, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+        } else if let transcriptionErrorMessage {
+            banner(transcriptionErrorMessage)
+        } else if case .error(let message) = recorder.state {
+            banner(message)
+        }
+    }
+
+    private func banner(_ message: String) -> some View {
+        Text(message)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .padding(.top, 8)
+    }
+
+    // MARK: - Recording
+
     private func toggleRecording() {
         if recorder.isRecording {
-            finishRecordingIfNeeded()
+            finishRecording()
             return
         }
+        startRecording()
+    }
 
+    private func startRecording() {
         Task { @MainActor in
             if !recorder.canRecord {
                 await recorder.prepare()
                 guard recorder.canRecord else {
-                    recordingErrorMessage = recorder.lastErrorMessage
-                        ?? "마이크 권한이 필요합니다. 설정에서 허용해 주세요."
-                    try? await Task.sleep(for: .seconds(3))
-                    recordingErrorMessage = nil
+                    await flashRecordingError(
+                        recorder.lastErrorMessage ?? "마이크 권한이 필요합니다. 설정에서 허용해 주세요."
+                    )
                     return
                 }
             }
 
             recordingErrorMessage = nil
             recorder.clearErrorState()
-            stopPlayback()
+            audioPlayer.stop()
+            recorder.deactivatePlaybackSession()
             item.deleteAudioFile()
 
             let url = AudioFileStore.newRecordingURL()
@@ -306,132 +303,53 @@ struct ItemDetailView: View {
                 let message = recorder.lastErrorMessage
                     ?? (error as? LocalizedError)?.errorDescription
                     ?? "녹음을 시작할 수 없습니다."
-                recordingErrorMessage = message
-                try? await Task.sleep(for: .seconds(3))
-                recordingErrorMessage = nil
+                await flashRecordingError(message)
             }
         }
     }
 
-    private func finishRecordingIfNeeded() {
-        fputs("ItemDetailView.finishRecordingIfNeeded: entered isRecording=\(recorder.isRecording)\n", stderr)
-        fflush(stderr)
-
+    /// Stops recording and, only after teardown, kicks off a separate transcription
+    /// task. Stopping itself performs no speech/async work, so it cannot crash.
+    private func finishRecording() {
         guard recorder.isRecording else { return }
 
         let pending = pendingRecordingFileName
         pendingRecordingFileName = nil
 
         let duration = recorder.stopRecording()
-        if let duration, duration > 0, let pending {
-            item.audioFileName = pending
-            item.audioDuration = duration
-            fputs(
-                "ItemDetailView.finishRecordingIfNeeded: persisted fileName=\(pending) duration=\(duration)\n",
-                stderr
-            )
-            fflush(stderr)
-            try? modelContext.save()
 
-            let isSmoke = ProcessInfo.processInfo.environment["FINISH_SMOKE"] != nil
-            if !isSmoke, let savedURL = item.audioFileURL {
-                transcriptionTask?.cancel()
-                transcriptionTask = Task { @MainActor in
-                    // Defer so stop UI + audio session teardown finish before Speech runs.
-                    await Task.yield()
-                    try? await Task.sleep(for: .milliseconds(300))
-                    guard !Task.isCancelled else { return }
-                    await processTranscription(from: savedURL)
-                }
+        guard let duration, duration > 0, let pending else {
+            if let pending {
+                let url = AudioFileStore.documentsDirectory.appendingPathComponent(pending)
+                try? FileManager.default.removeItem(at: url)
             }
-        } else if let fileName = pending {
-            let url = AudioFileStore.documentsDirectory.appendingPathComponent(fileName)
-            try? FileManager.default.removeItem(at: url)
-            fputs("ItemDetailView.finishRecordingIfNeeded: empty recording file=\(fileName)\n", stderr)
-            fflush(stderr)
-            recordingErrorMessage = "녹음된 오디오가 없습니다. 다시 시도해 주세요."
-            if ProcessInfo.processInfo.environment["FINISH_SMOKE"] == nil {
-                Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(3))
-                    recordingErrorMessage = nil
-                }
-            }
+            Task { await flashRecordingError("녹음된 오디오가 없습니다. 다시 시도해 주세요.") }
+            return
         }
+
+        item.audioFileName = pending
+        item.audioDuration = duration
+        try? modelContext.save()
+
+        guard let savedURL = item.audioFileURL else { return }
+        startTranscription(from: savedURL)
     }
 
-    #if DEBUG
-    private func runIntegratedFinishSmoke(mode: String) async {
-        if mode != "mock" {
-            await recorder.prepare()
-            guard recorder.canRecord else {
-                fputs("INTEGRATED_SKIP: microphone permission not granted\n", stderr)
-                fflush(stderr)
-                exit(0)
-            }
-        } else {
-            await recorder.prepare()
+    private func startTranscription(from url: URL) {
+        transcriptionTask?.cancel()
+        transcriptionTask = Task { @MainActor in
+            // Let the stop UI update and audio-session teardown settle first.
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            await processTranscription(from: url)
         }
-
-        let url = AudioFileStore.newRecordingURL()
-        pendingRecordingFileName = url.lastPathComponent
-
-        do {
-            try recorder.startRecording(to: url)
-        } catch {
-            fputs("FAIL: startRecording \(error)\n", stderr)
-            fflush(stderr)
-            exit(1)
-        }
-
-        fputs("start: state=\(recorder.state) isRecording=\(recorder.isRecording)\n", stderr)
-        fflush(stderr)
-
-        guard recorder.isRecording else {
-            fputs("FAIL: expected .recording after start\n", stderr)
-            fflush(stderr)
-            exit(1)
-        }
-
-        let sleepMs: UInt64 = mode == "live" ? 500 : 150
-        try? await Task.sleep(for: .milliseconds(sleepMs))
-
-        finishRecordingIfNeeded()
-
-        if let fileName = item.audioFileName,
-           let duration = item.audioDuration, duration > 0 {
-            var pass = true
-            if mode == "live" {
-                let exists = FileManager.default.fileExists(atPath: url.path)
-                let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? UInt64) ?? 0
-                fputs("live-check: exists=\(exists) size=\(size)\n", stderr)
-                fflush(stderr)
-                pass = exists && size > 0
-            }
-            if pass {
-                fputs(mode == "live" ? "LIVE_INTEGRATED_PASS\n" : "INTEGRATED_PASS\n", stderr)
-                fflush(stderr)
-                exit(0)
-            }
-        }
-
-        fputs("FAIL: integrated smoke persist\n", stderr)
-        fflush(stderr)
-        exit(1)
     }
-    #endif
 
     private func processTranscription(from url: URL) async {
         guard !Task.isCancelled else { return }
 
         transcriptionErrorMessage = nil
         processingStatus = .transcribing
-
-        // 녹음 파일이 디스크에 완전히 기록될 때까지 잠시 대기
-        try? await Task.sleep(for: .milliseconds(200))
-        guard !Task.isCancelled else {
-            processingStatus = nil
-            return
-        }
 
         do {
             let rawText = try await SpeechTranscriber.transcribe(url: url)
@@ -447,39 +365,47 @@ struct ItemDetailView: View {
                 return
             }
 
-            if item.textNote.isEmpty {
-                item.textNote = corrected
-            } else {
-                item.textNote += "\n" + corrected
-            }
+            appendToNote(corrected)
             try modelContext.save()
+        } catch is CancellationError {
+            // Silent: user navigated away or restarted recording.
         } catch {
             guard !Task.isCancelled else {
                 processingStatus = nil
                 return
             }
-
             transcriptionErrorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "음성을 텍스트로 변환하지 못했습니다."
-            try? await Task.sleep(for: .seconds(3))
-            transcriptionErrorMessage = nil
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(3))
+                transcriptionErrorMessage = nil
+            }
         }
 
         processingStatus = nil
     }
 
-    private func appendDraftToNote() {
-        let trimmed = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+    // MARK: - Playback
 
-        if item.textNote.isEmpty {
-            item.textNote = trimmed
-        } else {
-            item.textNote += "\n" + trimmed
+    private func togglePlayback() {
+        guard let url = item.audioFileURL else { return }
+
+        if audioPlayer.isPlaying {
+            audioPlayer.stop()
+            recorder.deactivatePlaybackSession()
+            return
         }
-        draftText = ""
-        hasUnsavedChanges = false
+
+        do {
+            try recorder.activatePlaybackSession()
+            try audioPlayer.play(url: url)
+        } catch {
+            audioPlayer.stop()
+            recorder.deactivatePlaybackSession()
+        }
     }
+
+    // MARK: - Notes
 
     private func saveMemo() {
         isTextFieldFocused = false
@@ -503,69 +429,92 @@ struct ItemDetailView: View {
         }
     }
 
-    private func togglePlayback() {
-        guard let url = item.audioFileURL else { return }
+    private func appendDraftToNote() {
+        let trimmed = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        appendToNote(trimmed)
+        draftText = ""
+        hasUnsavedChanges = false
+    }
 
-        if isPlaying {
-            stopPlayback()
-            return
-        }
-
-        do {
-            try recorder.activatePlaybackSession()
-            player = try AVAudioPlayer(contentsOf: url)
-            player?.play()
-            isPlaying = true
-        } catch {
-            stopPlayback()
+    private func appendToNote(_ text: String) {
+        if item.textNote.isEmpty {
+            item.textNote = text
+        } else {
+            item.textNote += "\n" + text
         }
     }
 
-    private func stopPlayback() {
-        player?.stop()
-        player = nil
-        isPlaying = false
+    // MARK: - Lifecycle
+
+    private func teardown() {
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
+        recorder.stopRecording()
+        audioPlayer.stop()
         recorder.deactivatePlaybackSession()
+        if hasUnsavedChanges {
+            appendDraftToNote()
+            try? modelContext.save()
+        }
+    }
+
+    // MARK: - Helpers
+
+    @MainActor
+    private func flashRecordingError(_ message: String) async {
+        recordingErrorMessage = message
+        try? await Task.sleep(for: .seconds(3))
+        recordingErrorMessage = nil
     }
 
     private func formattedDuration(_ duration: TimeInterval) -> String {
         let totalSeconds = Int(duration.rounded())
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
+        return String(format: "%d:%02d", totalSeconds / 60, totalSeconds % 60)
     }
 }
 
-#if DEBUG
-final class FinishSmokePermissionProvider: MicrophonePermissionProviding, @unchecked Sendable {
-    var recordPermission: AVAudioApplication.recordPermission = .granted
+/// Lightweight AVAudioPlayer wrapper that keeps `isPlaying` in sync with playback,
+/// including automatic reset when playback finishes.
+@Observable
+@MainActor
+final class AudioPlayer {
+    private(set) var isPlaying = false
+    private var player: AVAudioPlayer?
+    private var delegate: PlayerDelegate?
 
-    func requestRecordPermission() async -> Bool {
-        recordPermission = .granted
-        return true
+    func play(url: URL) throws {
+        stop()
+        let player = try AVAudioPlayer(contentsOf: url)
+        let delegate = PlayerDelegate { [weak self] in
+            self?.isPlaying = false
+        }
+        player.delegate = delegate
+        self.player = player
+        self.delegate = delegate
+        player.play()
+        isPlaying = true
+    }
+
+    func stop() {
+        player?.stop()
+        player = nil
+        delegate = nil
+        isPlaying = false
+    }
+
+    private final class PlayerDelegate: NSObject, AVAudioPlayerDelegate {
+        private let onFinish: () -> Void
+
+        init(onFinish: @escaping () -> Void) {
+            self.onFinish = onFinish
+        }
+
+        func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+            Task { @MainActor in onFinish() }
+        }
     }
 }
-
-final class FinishSmokeSessionConfigurator: AudioSessionConfiguring, @unchecked Sendable {
-    func deactivateSession() throws {}
-    func configureForRecording() throws {}
-}
-
-final class FinishSmokeCapture: RecordingCapturing, @unchecked Sendable {
-    var currentTime: TimeInterval = 0
-    var isMeteringEnabled = false
-
-    func prepareToRecord() -> Bool { true }
-    func record() -> Bool { true }
-    func stop() {}
-}
-
-final class FinishSmokeCaptureMaker: RecordingCaptureMaking, @unchecked Sendable {
-    func makeRecorder(url: URL, settings: [String: Any]) throws -> any RecordingCapturing {
-        FinishSmokeCapture()
-    }
-}
-#endif
 
 #Preview {
     NavigationStack {

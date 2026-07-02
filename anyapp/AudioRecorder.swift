@@ -6,32 +6,30 @@
 import AVFoundation
 import Observation
 
+/// Abstracts microphone permission so tests can run without a real device.
 protocol MicrophonePermissionProviding: Sendable {
     var recordPermission: AVAudioApplication.recordPermission { get }
     func requestRecordPermission() async -> Bool
 }
 
-protocol AudioSessionConfiguring: Sendable {
-    func deactivateSession() throws
+/// Abstracts audio session lifecycle so tests avoid touching `AVAudioSession`.
+protocol AudioSessionControlling: Sendable {
     func configureForRecording() throws
     func configureForPlayback() throws
+    func deactivate()
 }
 
-extension AudioSessionConfiguring {
-    func configureForPlayback() throws {}
-}
-
-protocol RecordingCapturing: AnyObject {
+/// Minimal recording engine seam wrapping `AVAudioRecorder`.
+protocol RecordingEngine: AnyObject {
     var currentTime: TimeInterval { get }
-    var isMeteringEnabled: Bool { get set }
-    func prepareToRecord() -> Bool
     func record() -> Bool
     func stop()
 }
 
-protocol RecordingCaptureMaking: Sendable {
-    func makeRecorder(url: URL, settings: [String: Any]) throws -> any RecordingCapturing
-}
+/// Builds a `RecordingEngine` for a destination URL. Injectable for tests.
+typealias RecordingEngineFactory = @Sendable (_ url: URL, _ settings: [String: Any]) throws -> RecordingEngine
+
+// MARK: - System implementations
 
 struct SystemMicrophonePermissionProvider: MicrophonePermissionProviding {
     var recordPermission: AVAudioApplication.recordPermission {
@@ -47,16 +45,8 @@ struct SystemMicrophonePermissionProvider: MicrophonePermissionProviding {
     }
 }
 
-struct SystemAudioSessionConfigurator: AudioSessionConfiguring {
-    func deactivateSession() throws {
-        try? AVAudioSession.sharedInstance().setActive(
-            false,
-            options: .notifyOthersOnDeactivation
-        )
-    }
-
+struct SystemAudioSessionController: AudioSessionControlling {
     func configureForRecording() throws {
-        try? deactivateSession()
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(
             .playAndRecord,
@@ -67,38 +57,40 @@ struct SystemAudioSessionConfigurator: AudioSessionConfiguring {
     }
 
     func configureForPlayback() throws {
-        try? deactivateSession()
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .default)
         try session.setActive(true)
     }
+
+    func deactivate() {
+        try? AVAudioSession.sharedInstance().setActive(
+            false,
+            options: .notifyOthersOnDeactivation
+        )
+    }
 }
 
-final class AVAudioRecorderCapture: RecordingCapturing {
+final class AVAudioRecorderEngine: RecordingEngine {
     private let recorder: AVAudioRecorder
 
-    init(recorder: AVAudioRecorder) {
-        self.recorder = recorder
+    init(url: URL, settings: [String: Any]) throws {
+        recorder = try AVAudioRecorder(url: url, settings: settings)
+        _ = recorder.prepareToRecord()
     }
 
     var currentTime: TimeInterval { recorder.currentTime }
-    var isMeteringEnabled: Bool {
-        get { recorder.isMeteringEnabled }
-        set { recorder.isMeteringEnabled = newValue }
-    }
-
-    func prepareToRecord() -> Bool { recorder.prepareToRecord() }
     func record() -> Bool { recorder.record() }
     func stop() { recorder.stop() }
 }
 
-struct SystemRecordingCaptureMaker: RecordingCaptureMaking {
-    func makeRecorder(url: URL, settings: [String: Any]) throws -> any RecordingCapturing {
-        let recorder = try AVAudioRecorder(url: url, settings: settings)
-        return AVAudioRecorderCapture(recorder: recorder)
-    }
-}
+// MARK: - AudioRecorder
 
+/// Owns the microphone recording lifecycle.
+///
+/// Design principle: `stopRecording()` performs *only* synchronous audio-resource
+/// teardown and never triggers speech recognition, network calls, or any other
+/// async pipeline. Consumers run transcription separately against the finished
+/// file so that stopping can never crash from cross-subsystem interaction.
 @Observable
 @MainActor
 final class AudioRecorder {
@@ -110,16 +102,16 @@ final class AudioRecorder {
     }
 
     enum RecordingError: LocalizedError, Equatable {
-        case permissionDenied
         case notPrepared
+        case permissionDenied
         case failedToStart
 
         var errorDescription: String? {
             switch self {
-            case .permissionDenied:
-                "마이크 권한이 필요합니다. 설정에서 허용해 주세요."
             case .notPrepared:
                 "녹음을 준비하는 중입니다. 잠시 후 다시 시도해 주세요."
+            case .permissionDenied:
+                "마이크 권한이 필요합니다. 설정에서 허용해 주세요."
             case .failedToStart:
                 "녹음을 시작할 수 없습니다."
             }
@@ -138,20 +130,23 @@ final class AudioRecorder {
     private(set) var isPrepared = false
 
     private let permissionProvider: any MicrophonePermissionProviding
-    private let sessionConfigurator: any AudioSessionConfiguring
-    private let captureMaker: any RecordingCaptureMaking
-    private var recorder: (any RecordingCapturing)?
+    private let sessionController: any AudioSessionControlling
+    private let engineFactory: RecordingEngineFactory
+
+    private var engine: (any RecordingEngine)?
     private var tickTask: Task<Void, Never>?
-    private var recordingStartedAt: Date?
+    private var startedAt: Date?
 
     init(
         permissionProvider: any MicrophonePermissionProviding = SystemMicrophonePermissionProvider(),
-        sessionConfigurator: any AudioSessionConfiguring = SystemAudioSessionConfigurator(),
-        captureMaker: any RecordingCaptureMaking = SystemRecordingCaptureMaker()
+        sessionController: any AudioSessionControlling = SystemAudioSessionController(),
+        engineFactory: @escaping RecordingEngineFactory = { url, settings in
+            try AVAudioRecorderEngine(url: url, settings: settings)
+        }
     ) {
         self.permissionProvider = permissionProvider
-        self.sessionConfigurator = sessionConfigurator
-        self.captureMaker = captureMaker
+        self.sessionController = sessionController
+        self.engineFactory = engineFactory
     }
 
     var isRecording: Bool {
@@ -175,12 +170,10 @@ final class AudioRecorder {
     }
 
     func refreshPermissionState() {
-        guard isPrepared else { return }
+        guard isPrepared, !isRecording else { return }
         switch permissionProvider.recordPermission {
         case .granted:
-            if case .permissionDenied = state {
-                state = .idle
-            }
+            if case .permissionDenied = state { state = .idle }
         case .denied:
             state = .permissionDenied
         case .undetermined:
@@ -190,19 +183,14 @@ final class AudioRecorder {
         }
     }
 
-    func activatePlaybackSession() throws {
-        try sessionConfigurator.configureForPlayback()
+    func clearErrorState() {
+        if case .error = state { state = .idle }
     }
 
-    func deactivatePlaybackSession() {
-        try? sessionConfigurator.deactivateSession()
-    }
+    // MARK: Recording
 
     func startRecording(to url: URL) throws {
-        guard isPrepared else {
-            throw RecordingError.notPrepared
-        }
-
+        guard isPrepared else { throw RecordingError.notPrepared }
         guard permissionProvider.recordPermission == .granted else {
             state = .permissionDenied
             throw RecordingError.permissionDenied
@@ -211,79 +199,82 @@ final class AudioRecorder {
         clearErrorState()
 
         do {
-            try sessionConfigurator.configureForRecording()
+            try sessionController.configureForRecording()
         } catch {
+            sessionController.deactivate()
             state = .error("오디오 세션을 설정할 수 없습니다.")
             throw error
         }
 
+        let newEngine: any RecordingEngine
         do {
-            recorder = try captureMaker.makeRecorder(url: url, settings: Self.recordingSettings)
+            newEngine = try engineFactory(url, Self.recordingSettings)
         } catch {
-            try? sessionConfigurator.deactivateSession()
+            sessionController.deactivate()
             state = .error("녹음 장치를 초기화할 수 없습니다.")
             throw error
         }
 
-        recorder?.isMeteringEnabled = false
-
-        guard recorder?.prepareToRecord() == true else {
-            recorder = nil
-            try? sessionConfigurator.deactivateSession()
+        guard newEngine.record() else {
+            sessionController.deactivate()
             state = .error(RecordingError.failedToStart.errorDescription ?? "녹음을 시작할 수 없습니다.")
             throw RecordingError.failedToStart
         }
 
-        guard recorder?.record() == true else {
-            recorder = nil
-            try? sessionConfigurator.deactivateSession()
-            state = .error(RecordingError.failedToStart.errorDescription ?? "녹음을 시작할 수 없습니다.")
-            throw RecordingError.failedToStart
-        }
-
+        engine = newEngine
         elapsedTime = 0
-        recordingStartedAt = Date()
+        startedAt = Date()
         state = .recording
-        startElapsedTimer()
+        startTicking()
     }
 
+    /// Synchronously tears down the active recording and returns its duration.
+    /// Never triggers any async/speech work — that is the caller's responsibility.
+    @discardableResult
     func stopRecording() -> TimeInterval? {
         guard isRecording else { return nil }
 
-        stopElapsedTimer()
+        stopTicking()
 
-        // AVAudioRecorder.currentTime resets to 0 after stop(), so capture before stop().
-        let wallClockDuration = recordingStartedAt.map { Date().timeIntervalSince($0) } ?? 0
-        let duration = max(recorder?.currentTime ?? 0, elapsedTime, wallClockDuration)
-        recorder?.stop()
-        recorder = nil
-        recordingStartedAt = nil
+        // AVAudioRecorder.currentTime resets to 0 after stop(), so read it first.
+        let wallClock = startedAt.map { Date().timeIntervalSince($0) } ?? 0
+        let duration = max(engine?.currentTime ?? 0, elapsedTime, wallClock)
 
-        try? sessionConfigurator.deactivateSession()
+        engine?.stop()
+        engine = nil
+        startedAt = nil
+
+        sessionController.deactivate()
         state = .idle
 
         return duration > 0 ? duration : nil
     }
 
-    private func startElapsedTimer() {
-        stopElapsedTimer()
+    // MARK: Playback session
+
+    func activatePlaybackSession() throws {
+        try sessionController.configureForPlayback()
+    }
+
+    func deactivatePlaybackSession() {
+        sessionController.deactivate()
+    }
+
+    // MARK: Timer
+
+    private func startTicking() {
+        stopTicking()
         tickTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(100))
                 guard let self, self.isRecording else { break }
-                self.elapsedTime = self.recorder?.currentTime ?? self.elapsedTime
+                self.elapsedTime = self.engine?.currentTime ?? self.elapsedTime
             }
         }
     }
 
-    private func stopElapsedTimer() {
+    private func stopTicking() {
         tickTask?.cancel()
         tickTask = nil
-    }
-
-    func clearErrorState() {
-        if case .error = state {
-            state = .idle
-        }
     }
 }

@@ -16,19 +16,6 @@ struct ContentView: View {
     @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        #if DEBUG
-        if ProcessInfo.processInfo.environment["FINISH_SMOKE"] != nil {
-            FinishSmokeRootView()
-        } else {
-            mainNavigation
-        }
-        #else
-        mainNavigation
-        #endif
-    }
-
-    @ViewBuilder
-    private var mainNavigation: some View {
         if horizontalSizeClass == .compact {
             phoneNavigation
         } else {
@@ -93,29 +80,6 @@ struct ContentView: View {
             }
         }
     }
-
-    #if DEBUG
-    private struct FinishSmokeRootView: View {
-        @Environment(\.modelContext) private var modelContext
-        @State private var item = Item(timestamp: .now)
-
-        var body: some View {
-            ItemDetailView(item: item, injectedRecorder: mockRecorder)
-                .onAppear {
-                    modelContext.insert(item)
-                }
-        }
-
-        private var mockRecorder: AudioRecorder? {
-            guard ProcessInfo.processInfo.environment["FINISH_SMOKE"] == "mock" else { return nil }
-            return AudioRecorder(
-                permissionProvider: FinishSmokePermissionProvider(),
-                sessionConfigurator: FinishSmokeSessionConfigurator(),
-                captureMaker: FinishSmokeCaptureMaker()
-            )
-        }
-    }
-    #endif
 
     private func addItem() {
         withAnimation {
