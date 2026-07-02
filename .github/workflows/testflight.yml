@@ -7,11 +7,18 @@ name: TestFlight
 on:
   workflow_dispatch:
     inputs:
+      build_number:
+        description: "Optional build number (e.g. 40). Leave empty for auto increment."
+        required: false
+        default: ""
+        type: string
       force_upload:
-        description: "Ignore upload throttle and force TestFlight upload"
+        description: "Ignore Apple upload limit (90382) and retry upload"
         required: false
         default: false
         type: boolean
+  repository_dispatch:
+    types: [deploy-testflight]
 
 concurrency:
   group: testflight-${{ github.ref }}
@@ -65,4 +72,5 @@ jobs:
           ASC_KEY_PATH: ${{ env.ASC_KEY_PATH }}
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
           DERIVED_DATA_CACHE_HIT: ${{ steps.deriveddata-cache.outputs.cache-hit }}
-          FORCE_TESTFLIGHT_UPLOAD: ${{ inputs.force_upload && 'true' || '' }}
+          TARGET_BUILD_NUMBER: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.build_number || inputs.build_number }}
+          FORCE_TESTFLIGHT_UPLOAD: ${{ (github.event_name == 'repository_dispatch' && github.event.client_payload.force_upload == 'true' && 'true') || (inputs.force_upload && 'true') || '' }}
