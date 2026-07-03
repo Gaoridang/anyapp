@@ -54,31 +54,39 @@ struct ItemDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                micButton
-                    .padding(.top, 120)
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(spacing: 24) {
+                    micButton
+                        .padding(.top, 120)
 
-                belowMicSlot
+                    belowMicSlot
 
-                savedNoteSection
+                    savedNoteSection
 
-                Spacer(minLength: 40)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .scrollDismissesKeyboard(.interactively)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 20)
-                .onEnded { value in
-                    if value.translation.height > 30 {
-                        isTextFieldFocused = false
-                    }
+                    Spacer(minLength: 40)
                 }
-        )
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: geometry.size.height, alignment: .top)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: dismissKeyboard)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 20)
+                    .onEnded { value in
+                        if value.translation.height > 30 {
+                            dismissKeyboard()
+                        }
+                    }
+            )
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemGroupedBackground))
-        .overlay(alignment: .bottom) { bottomHint }
+        .overlay(alignment: .bottom) {
+            bottomHint
+                .onTapGesture(perform: dismissKeyboard)
+        }
         .navigationTitle(item.timestamp.formatted(.dateTime.day().month().year().hour().minute()))
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -286,6 +294,7 @@ struct ItemDetailView: View {
     private static let recordingUITransitionDelay: Duration = .milliseconds(120)
 
     private func toggleRecording() {
+        dismissKeyboard()
         guard !isHandlingRecordingTap else { return }
 
         if recorder.isRecording {
@@ -460,6 +469,7 @@ struct ItemDetailView: View {
     // MARK: - Playback
 
     private func togglePlayback() {
+        dismissKeyboard()
         guard let url = item.audioFileURL else { return }
 
         if audioPlayer.isPlaying {
@@ -490,7 +500,7 @@ struct ItemDetailView: View {
     // MARK: - Notes
 
     private func saveMemo() {
-        isTextFieldFocused = false
+        dismissKeyboard()
         appendDraftToNote()
 
         do {
@@ -537,6 +547,10 @@ struct ItemDetailView: View {
     }
 
     // MARK: - Helpers
+
+    private func dismissKeyboard() {
+        isTextFieldFocused = false
+    }
 
     @MainActor
     private func flashRecordingError(_ message: String) async {
