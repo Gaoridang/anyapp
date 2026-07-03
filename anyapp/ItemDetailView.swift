@@ -54,26 +54,32 @@ struct ItemDetailView: View {
     }
 
     var body: some View {
-        // The toolbar is a plain VStack child (not a safeAreaInset) so no scroll
-        // container touches the bottom safe area edge. This way the keyboard
-        // inset cannot be absorbed as ScrollView content inset, and the whole
-        // layout resizes in the same transaction as the keyboard animation.
+        // Toolbar is a plain VStack child so no scroll container touches the bottom
+        // safe area edge (keyboard inset is not absorbed as ScrollView content inset).
+        // Mic + saved note live in one ScrollView whose minHeight tracks the area above
+        // the toolbar; when the keyboard shrinks that area, inner Spacers compress and
+        // the whole block moves up together.
         VStack(spacing: 0) {
-            VStack(spacing: 16) {
-                Spacer(minLength: 0)
-
-                VStack(spacing: 24) {
-                    micButton
-                    belowMicSlot
-                }
-
-                Spacer(minLength: 0)
-
+            GeometryReader { geometry in
                 ScrollView {
-                    savedNoteSection
-                        .frame(maxWidth: .infinity, alignment: .top)
+                    VStack(spacing: 16) {
+                        Spacer(minLength: 0)
+
+                        VStack(spacing: 24) {
+                            micButton
+                            belowMicSlot
+                        }
+
+                        savedNoteSection
+                            .frame(maxWidth: .infinity, alignment: .top)
+
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: geometry.size.height, alignment: .top)
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: dismissKeyboard)
                 }
-                .frame(maxHeight: .infinity)
                 .scrollDismissesKeyboard(.interactively)
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 20)
@@ -85,8 +91,6 @@ struct ItemDetailView: View {
                 )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .onTapGesture(perform: dismissKeyboard)
 
             inputToolbar
         }
