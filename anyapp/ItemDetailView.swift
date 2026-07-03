@@ -36,20 +36,6 @@ struct ItemDetailView: View {
     @State private var activeTranscriptionProvider: STTProvider?
 
     @FocusState private var isTextFieldFocused: Bool
-    @State private var isKeyboardVisible = false
-
-    private enum ScrollTarget: Hashable {
-        case savedNotes
-        case contentBottom
-    }
-
-    private var micTopPadding: CGFloat {
-        isKeyboardVisible ? 16 : 120
-    }
-
-    private var contentSpacing: CGFloat {
-        isKeyboardVisible ? 16 : 24
-    }
 
     private var isTranscribing: Bool {
         if case .transcribing = transcriptionState { return true }
@@ -68,40 +54,33 @@ struct ItemDetailView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollViewReader { scrollProxy in
-                ScrollView {
-                    VStack(spacing: contentSpacing) {
-                        micButton
-                            .padding(.top, micTopPadding)
+        VStack(spacing: 16) {
+            Spacer(minLength: 0)
 
-                        belowMicSlot
-
-                        savedNoteSection
-
-                        Color.clear
-                            .frame(height: 1)
-                            .id(ScrollTarget.contentBottom)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: isKeyboardVisible ? 0 : geometry.size.height, alignment: .top)
-                    .contentShape(Rectangle())
-                    .onTapGesture(perform: dismissKeyboard)
-                }
-                .scrollDismissesKeyboard(.interactively)
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 20)
-                        .onEnded { value in
-                            if value.translation.height > 30 {
-                                dismissKeyboard()
-                            }
-                        }
-                )
-                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
-                    handleKeyboardFrameChange(notification, scrollProxy: scrollProxy)
-                }
+            VStack(spacing: 24) {
+                micButton
+                belowMicSlot
             }
+
+            Spacer(minLength: 0)
+
+            ScrollView {
+                savedNoteSection
+                    .frame(maxWidth: .infinity, alignment: .top)
+            }
+            .frame(maxHeight: .infinity)
+            .scrollDismissesKeyboard(.interactively)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 20)
+                    .onEnded { value in
+                        if value.translation.height > 30 {
+                            dismissKeyboard()
+                        }
+                    }
+            )
         }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: dismissKeyboard)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemGroupedBackground))
         .overlay(alignment: .bottom) {
@@ -208,7 +187,6 @@ struct ItemDetailView: View {
                 }
                 .padding(.horizontal, 20)
                 .textSelection(.enabled)
-                .id(ScrollTarget.savedNotes)
         }
     }
 
@@ -572,37 +550,6 @@ struct ItemDetailView: View {
 
     private func dismissKeyboard() {
         isTextFieldFocused = false
-    }
-
-    private func handleKeyboardFrameChange(_ notification: Notification, scrollProxy: ScrollViewProxy) {
-        guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else {
-            return
-        }
-
-        let screenHeight = UIScreen.main.bounds.height
-        let visible = frame.minY < screenHeight
-        let shouldScroll = visible && !isKeyboardVisible
-        let animation = Self.keyboardAnimation(from: notification)
-
-        withAnimation(animation) {
-            isKeyboardVisible = visible
-            if shouldScroll {
-                scrollToContentForKeyboard(using: scrollProxy)
-            }
-        }
-    }
-
-    private func scrollToContentForKeyboard(using proxy: ScrollViewProxy) {
-        if !item.textNote.isEmpty {
-            proxy.scrollTo(ScrollTarget.savedNotes, anchor: .bottom)
-        } else {
-            proxy.scrollTo(ScrollTarget.contentBottom, anchor: .bottom)
-        }
-    }
-
-    private static func keyboardAnimation(from notification: Notification) -> Animation {
-        let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval ?? 0.25
-        return .easeInOut(duration: duration)
     }
 
     @MainActor
