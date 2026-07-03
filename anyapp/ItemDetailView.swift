@@ -37,6 +37,19 @@ struct ItemDetailView: View {
 
     @FocusState private var isTextFieldFocused: Bool
 
+    private enum ScrollTarget: Hashable {
+        case savedNotes
+        case contentBottom
+    }
+
+    private var micTopPadding: CGFloat {
+        isTextFieldFocused ? 16 : 120
+    }
+
+    private var contentSpacing: CGFloat {
+        isTextFieldFocused ? 16 : 24
+    }
+
     private var isTranscribing: Bool {
         if case .transcribing = transcriptionState { return true }
         return false
@@ -54,31 +67,48 @@ struct ItemDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                micButton
-                    .padding(.top, 120)
+        GeometryReader { geometry in
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    VStack(spacing: contentSpacing) {
+                        micButton
+                            .padding(.top, micTopPadding)
 
-                belowMicSlot
+                        belowMicSlot
 
-                savedNoteSection
+                        savedNoteSection
 
-                Spacer(minLength: 40)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .scrollDismissesKeyboard(.interactively)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 20)
-                .onEnded { value in
-                    if value.translation.height > 30 {
-                        isTextFieldFocused = false
+                        Color.clear
+                            .frame(height: 1)
+                            .id(ScrollTarget.contentBottom)
                     }
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: isTextFieldFocused ? 0 : geometry.size.height, alignment: .top)
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: dismissKeyboard)
                 }
-        )
+                .scrollDismissesKeyboard(.interactively)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 20)
+                        .onEnded { value in
+                            if value.translation.height > 30 {
+                                dismissKeyboard()
+                            }
+                        }
+                )
+                .onChange(of: isTextFieldFocused) { _, isFocused in
+                    guard isFocused else { return }
+                    scrollContentForKeyboard(using: scrollProxy)
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: isTextFieldFocused)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemGroupedBackground))
-        .overlay(alignment: .bottom) { bottomHint }
+        .overlay(alignment: .bottom) {
+            bottomHint
+                .onTapGesture(perform: dismissKeyboard)
+        }
         .navigationTitle(item.timestamp.formatted(.dateTime.day().month().year().hour().minute()))
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -179,6 +209,7 @@ struct ItemDetailView: View {
                 }
                 .padding(.horizontal, 20)
                 .textSelection(.enabled)
+                .id(ScrollTarget.savedNotes)
         }
     }
 
@@ -216,6 +247,8 @@ struct ItemDetailView: View {
 
             Button("저장", action: saveMemo)
                 .font(.body.weight(.semibold))
+                .buttonStyle(.plain)
+                .padding(.bottom, 10)
                 .disabled(!hasUnsavedChanges)
                 .accessibilityIdentifier("saveMemoButton")
         }
@@ -284,6 +317,7 @@ struct ItemDetailView: View {
     private static let recordingUITransitionDelay: Duration = .milliseconds(120)
 
     private func toggleRecording() {
+        dismissKeyboard()
         guard !isHandlingRecordingTap else { return }
 
         if recorder.isRecording {
@@ -458,6 +492,7 @@ struct ItemDetailView: View {
     // MARK: - Playback
 
     private func togglePlayback() {
+        dismissKeyboard()
         guard let url = item.audioFileURL else { return }
 
         if audioPlayer.isPlaying {
@@ -488,7 +523,7 @@ struct ItemDetailView: View {
     // MARK: - Notes
 
     private func saveMemo() {
-        isTextFieldFocused = false
+        dismissKeyboard()
         appendDraftToNote()
 
         do {
@@ -535,6 +570,23 @@ struct ItemDetailView: View {
     }
 
     // MARK: - Helpers
+
+    private func dismissKeyboard() {
+        isTextFieldFocused = false
+    }
+
+    private func scrollContentForKeyboard(using proxy: ScrollViewProxy) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            withAnimation(.easeInOut(duration: 0.25)) {
+                if !item.textNote.isEmpty {
+                    proxy.scrollTo(ScrollTarget.savedNotes, anchor: .bottom)
+                } else {
+                    proxy.scrollTo(ScrollTarget.contentBottom, anchor: .bottom)
+                }
+            }
+        }
+    }
 
     @MainActor
     private func flashRecordingError(_ message: String) async {
