@@ -54,33 +54,42 @@ struct ItemDetailView: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-            Spacer(minLength: 0)
+        // The toolbar is a plain VStack child (not a safeAreaInset) so no scroll
+        // container touches the bottom safe area edge. This way the keyboard
+        // inset cannot be absorbed as ScrollView content inset, and the whole
+        // layout resizes in the same transaction as the keyboard animation.
+        VStack(spacing: 0) {
+            VStack(spacing: 16) {
+                Spacer(minLength: 0)
 
-            VStack(spacing: 24) {
-                micButton
-                belowMicSlot
-            }
+                VStack(spacing: 24) {
+                    micButton
+                    belowMicSlot
+                }
 
-            Spacer(minLength: 0)
+                Spacer(minLength: 0)
 
-            ScrollView {
-                savedNoteSection
-                    .frame(maxWidth: .infinity, alignment: .top)
-            }
-            .frame(maxHeight: .infinity)
-            .scrollDismissesKeyboard(.interactively)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 20)
-                    .onEnded { value in
-                        if value.translation.height > 30 {
-                            dismissKeyboard()
+                ScrollView {
+                    savedNoteSection
+                        .frame(maxWidth: .infinity, alignment: .top)
+                }
+                .frame(maxHeight: .infinity)
+                .scrollDismissesKeyboard(.interactively)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 20)
+                        .onEnded { value in
+                            if value.translation.height > 30 {
+                                dismissKeyboard()
+                            }
                         }
-                    }
-            )
+                )
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: dismissKeyboard)
+
+            inputToolbar
         }
-        .contentShape(Rectangle())
-        .onTapGesture(perform: dismissKeyboard)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemGroupedBackground))
         .overlay(alignment: .bottom) {
@@ -89,9 +98,6 @@ struct ItemDetailView: View {
         }
         .navigationTitle(item.timestamp.formatted(.dateTime.day().month().year().hour().minute()))
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            inputToolbar
-        }
         .overlay(alignment: .top) { topBanner }
         .animation(.easeInOut(duration: 0.2), value: showSaveConfirmation)
         .animation(.easeInOut(duration: 0.2), value: recordingErrorMessage)
@@ -234,7 +240,9 @@ struct ItemDetailView: View {
         .background {
             Rectangle()
                 .fill(.bar)
-                .ignoresSafeArea(edges: .bottom)
+                // Extend under the home indicator only; never into the keyboard
+                // region, so the bar hugs the keyboard's top edge while resizing.
+                .ignoresSafeArea(.container, edges: .bottom)
         }
     }
 
