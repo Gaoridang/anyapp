@@ -216,6 +216,8 @@ struct ItemDetailView: View {
 
             Button("저장", action: saveMemo)
                 .font(.body.weight(.semibold))
+                .buttonStyle(.plain)
+                .padding(.bottom, 10)
                 .disabled(!hasUnsavedChanges)
                 .accessibilityIdentifier("saveMemoButton")
         }
