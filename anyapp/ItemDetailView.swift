@@ -56,19 +56,15 @@ struct ItemDetailView: View {
     var body: some View {
         // Toolbar is a plain VStack child so no scroll container touches the bottom
         // safe area edge (keyboard inset is not absorbed as ScrollView content inset).
-        // Mic + saved note live in one ScrollView whose minHeight tracks the area above
-        // the toolbar; when the keyboard shrinks that area, inner Spacers compress and
-        // the whole block moves up together.
+        // Saved note and playback live in the ScrollView above the input bar; when the
+        // keyboard shrinks that area, inner Spacers compress and the block moves up together.
         VStack(spacing: 0) {
             GeometryReader { geometry in
                 ScrollView {
                     VStack(spacing: 16) {
                         Spacer(minLength: 0)
 
-                        VStack(spacing: 24) {
-                            micButton
-                            belowMicSlot
-                        }
+                        contentStatusSection
 
                         savedNoteSection
                             .frame(maxWidth: .infinity, alignment: .top)
@@ -106,6 +102,7 @@ struct ItemDetailView: View {
         .animation(.easeInOut(duration: 0.2), value: showSaveConfirmation)
         .animation(.easeInOut(duration: 0.2), value: recordingErrorMessage)
         .animation(.easeInOut(duration: 0.2), value: transcriptionState)
+        .animation(.easeInOut(duration: 0.25), value: showsRecordingUI)
         .alert("저장 실패", isPresented: Binding(
             get: { saveErrorMessage != nil },
             set: { if !$0 { saveErrorMessage = nil } }
@@ -131,54 +128,21 @@ struct ItemDetailView: View {
 
     // MARK: - Subviews
 
-    private var micButton: some View {
-        Button(action: toggleRecording) {
-            Image(systemName: showsRecordingUI ? "stop.fill" : "mic")
-                .font(.system(size: 30, weight: .light))
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(showsRecordingUI ? .white : .primary)
-                .frame(width: 88, height: 88)
-                .background {
-                    Circle()
-                        .fill(showsRecordingUI ? Color.red.opacity(0.88) : Color(.secondarySystemFill))
-                }
-                .overlay {
-                    Circle()
-                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
-                }
-                .shadow(color: .black.opacity(0.06), radius: 8, y: 3)
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("micButton")
-        .accessibilityLabel(showsRecordingUI ? "녹음 중지" : "녹음 시작")
-        .accessibilityHint(recorder.canRecord ? "" : "마이크 권한이 필요합니다")
-        .disabled(!recorder.isPrepared || isHandlingRecordingTap || isTranscribing)
-        .opacity(recorder.isPrepared && (recorder.canRecord || showsRecordingUI) && !isTranscribing ? 1 : 0.45)
-        .animation(nil, value: showsRecordingUI)
-    }
-
     @ViewBuilder
-    private var belowMicSlot: some View {
+    private var contentStatusSection: some View {
         Group {
-            if showsRecordingUI {
-                Text(formattedDuration(recorder.elapsedTime))
-                    .font(.system(.title3, design: .rounded, weight: .medium))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("recordingTimer")
-            } else if isTranscribing {
+            if isTranscribing {
                 Text(transcribingStatusText)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("transcribingLabel")
-            } else if let duration = item.audioDuration {
+            } else if let duration = item.audioDuration, !showsRecordingUI {
                 playbackControls(duration: duration)
-            } else {
-                Color.clear
             }
         }
-        .frame(height: 60)
-        .animation(nil, value: showsRecordingUI)
+        .frame(minHeight: 44)
+        .frame(maxWidth: .infinity)
+        .animation(.easeInOut(duration: 0.25), value: showsRecordingUI)
     }
 
     @ViewBuilder
@@ -223,7 +187,7 @@ struct ItemDetailView: View {
     }
 
     private var inputToolbar: some View {
-        HStack(alignment: .bottom, spacing: 12) {
+        HStack(alignment: .bottom, spacing: 10) {
             TextField("생각을 적어보세요", text: $draftText, axis: .vertical)
                 .focused($isTextFieldFocused)
                 .lineLimit(1...5)
@@ -231,13 +195,30 @@ struct ItemDetailView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
+                .disabled(showsRecordingUI)
 
-            Button("저장", action: saveMemo)
-                .font(.body.weight(.semibold))
-                .buttonStyle(.plain)
-                .padding(.bottom, 10)
-                .disabled(!hasUnsavedChanges)
-                .accessibilityIdentifier("saveMemoButton")
+            if hasUnsavedChanges, !showsRecordingUI {
+                Button("저장", action: saveMemo)
+                    .font(.body.weight(.semibold))
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 10)
+                    .accessibilityIdentifier("saveMemoButton")
+                    .transition(.opacity.combined(with: .scale(scale: 0.92)))
+            }
+
+            HStack(spacing: 8) {
+                if showsRecordingUI {
+                    Text(formattedDuration(recorder.elapsedTime))
+                        .font(.system(.subheadline, design: .rounded, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("recordingTimer")
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+
+                recordButton
+            }
+            .padding(.bottom, 4)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -248,6 +229,27 @@ struct ItemDetailView: View {
                 // region, so the bar hugs the keyboard's top edge while resizing.
                 .ignoresSafeArea(.container, edges: .bottom)
         }
+    }
+
+    private var recordButton: some View {
+        Button(action: toggleRecording) {
+            Image(systemName: showsRecordingUI ? "pause.fill" : "mic.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(showsRecordingUI ? .white : .primary)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 36, height: 36)
+                .background {
+                    Circle()
+                        .fill(showsRecordingUI ? Color.red.opacity(0.92) : Color(.secondarySystemFill))
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("micButton")
+        .accessibilityLabel(showsRecordingUI ? "녹음 중지" : "녹음 시작")
+        .accessibilityHint(recorder.canRecord ? "" : "마이크 권한이 필요합니다")
+        .disabled(!recorder.isPrepared || isHandlingRecordingTap || isTranscribing)
+        .opacity(recorder.isPrepared && (recorder.canRecord || showsRecordingUI) && !isTranscribing ? 1 : 0.45)
     }
 
     @ViewBuilder
