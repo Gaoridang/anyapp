@@ -385,7 +385,6 @@ struct ItemDetailView: View {
     private static let recordingUITransitionDelay: Duration = .milliseconds(120)
 
     private func toggleRecording() {
-        dismissKeyboard()
         guard !isHandlingRecordingTap else { return }
 
         if recorder.isRecording {
