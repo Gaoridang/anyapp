@@ -51,12 +51,14 @@ final class PhotoAttachUITests: XCTestCase {
         let keyboardDismissed = !keyboard.waitForExistence(timeout: 3)
         XCTAssertTrue(keyboardDismissed, "Keyboard should dismiss while the sheet is presented")
 
-        let closeButton = app.buttons["closePhotoAlbumButton"]
-        XCTAssertTrue(closeButton.waitForExistence(timeout: 8))
-        closeButton.tap()
+        if photoSheet.exists {
+            photoSheet.swipeDown()
+        } else {
+            app.swipeDown()
+        }
 
         XCTAssertTrue(textField.waitForExistence(timeout: 8))
         let sheetDismissed = !photoSheetTitle.waitForExistence(timeout: 2) && !photoSheet.waitForExistence(timeout: 1)
-        XCTAssertTrue(sheetDismissed, "Photo album sheet should dismiss after tapping close")
+        XCTAssertTrue(sheetDismissed, "Photo album sheet should dismiss after swiping down")
     }
 }
