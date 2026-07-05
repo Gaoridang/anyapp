@@ -80,18 +80,7 @@ struct ItemDetailView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: geometry.size.height, alignment: .top)
-                    .contentShape(Rectangle())
-                    .onTapGesture(perform: dismissKeyboard)
                 }
-                .scrollDismissesKeyboard(.interactively)
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 20)
-                        .onEnded { value in
-                            if value.translation.height > 30 {
-                                dismissKeyboard()
-                            }
-                        }
-                )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -237,6 +226,15 @@ struct ItemDetailView: View {
                 // region, so the bar hugs the keyboard's top edge while resizing.
                 .ignoresSafeArea(.container, edges: .bottom)
         }
+        .contentShape(Rectangle())
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 20)
+                .onEnded { value in
+                    if value.translation.height > 30 {
+                        dismissKeyboard()
+                    }
+                }
+        )
     }
 
     private var inputBar: some View {
