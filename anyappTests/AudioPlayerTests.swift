@@ -6,6 +6,7 @@
 import Testing
 @testable import anyapp
 
+@MainActor
 struct AudioPlayerTests {
     @Test func remainingTimeNeverNegative() {
         #expect(AudioPlayer.remainingTime(total: 120, elapsed: 30) == 90)

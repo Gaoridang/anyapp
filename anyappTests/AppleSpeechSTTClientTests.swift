@@ -41,13 +41,15 @@ struct AppleSpeechSTTClientTests {
                 status: .authorized,
                 requestedStatus: .authorized
             ),
-            transcriber: MockOnDeviceSpeechTranscriber(
-                available: true,
-                result: .success("기기 변환 결과")
-            )
+            transcriberFactory: { _ in
+                MockOnDeviceSpeechTranscriber(
+                    available: true,
+                    result: .success("기기 변환 결과")
+                )
+            }
         )
 
-        let text = try await client.transcribe(audioFileURL: sampleURL)
+        let text = try await client.transcribe(audioFileURL: sampleURL, locale: PracticeLocale.korean)
         #expect(text == "기기 변환 결과")
     }
 
@@ -57,13 +59,15 @@ struct AppleSpeechSTTClientTests {
                 status: .notDetermined,
                 requestedStatus: .authorized
             ),
-            transcriber: MockOnDeviceSpeechTranscriber(
-                available: true,
-                result: .success("승인 후 변환")
-            )
+            transcriberFactory: { _ in
+                MockOnDeviceSpeechTranscriber(
+                    available: true,
+                    result: .success("승인 후 변환")
+                )
+            }
         )
 
-        let text = try await client.transcribe(audioFileURL: sampleURL)
+        let text = try await client.transcribe(audioFileURL: sampleURL, locale: PracticeLocale.korean)
         #expect(text == "승인 후 변환")
     }
 
@@ -73,14 +77,16 @@ struct AppleSpeechSTTClientTests {
                 status: .denied,
                 requestedStatus: .denied
             ),
-            transcriber: MockOnDeviceSpeechTranscriber(
-                available: true,
-                result: .success("unused")
-            )
+            transcriberFactory: { _ in
+                MockOnDeviceSpeechTranscriber(
+                    available: true,
+                    result: .success("unused")
+                )
+            }
         )
 
         await #expect(throws: AppleSpeechSTTClient.STTError.authorizationDenied) {
-            try await client.transcribe(audioFileURL: sampleURL)
+            try await client.transcribe(audioFileURL: sampleURL, locale: PracticeLocale.korean)
         }
     }
 
@@ -90,14 +96,16 @@ struct AppleSpeechSTTClientTests {
                 status: .authorized,
                 requestedStatus: .authorized
             ),
-            transcriber: MockOnDeviceSpeechTranscriber(
-                available: false,
-                result: .success("unused")
-            )
+            transcriberFactory: { _ in
+                MockOnDeviceSpeechTranscriber(
+                    available: false,
+                    result: .success("unused")
+                )
+            }
         )
 
-        await #expect(throws: AppleSpeechSTTClient.STTError.onDeviceNotAvailable) {
-            try await client.transcribe(audioFileURL: sampleURL)
+        await #expect(throws: AppleSpeechSTTClient.STTError.onDeviceNotAvailable(locale: PracticeLocale.english)) {
+            try await client.transcribe(audioFileURL: sampleURL, locale: PracticeLocale.english)
         }
     }
 }
