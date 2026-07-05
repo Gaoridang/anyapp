@@ -83,15 +83,6 @@ struct ItemDetailView: View {
                     .contentShape(Rectangle())
                     .onTapGesture(perform: dismissKeyboard)
                 }
-                .scrollDismissesKeyboard(.interactively)
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 20)
-                        .onEnded { value in
-                            if value.translation.height > 30 {
-                                dismissKeyboard()
-                            }
-                        }
-                )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -110,6 +101,7 @@ struct ItemDetailView: View {
         .animation(.easeInOut(duration: 0.2), value: recordingErrorMessage)
         .animation(.easeInOut(duration: 0.2), value: transcriptionState)
         .animation(.easeInOut(duration: 0.25), value: showsRecordingUI)
+        .animation(.easeInOut(duration: 0.2), value: hasUnsavedChanges)
         .alert("저장 실패", isPresented: Binding(
             get: { saveErrorMessage != nil },
             set: { if !$0 { saveErrorMessage = nil } }
@@ -226,14 +218,6 @@ struct ItemDetailView: View {
     private var inputToolbar: some View {
         HStack(alignment: .center, spacing: 10) {
             inputBar
-
-            if hasUnsavedChanges, !showsRecordingUI {
-                Button("저장", action: saveMemo)
-                    .font(.body.weight(.semibold))
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("saveMemoButton")
-                    .transition(.opacity.combined(with: .scale(scale: 0.92)))
-            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -244,6 +228,15 @@ struct ItemDetailView: View {
                 // region, so the bar hugs the keyboard's top edge while resizing.
                 .ignoresSafeArea(.container, edges: .bottom)
         }
+        .contentShape(Rectangle())
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 20)
+                .onEnded { value in
+                    if value.translation.height > 30 {
+                        dismissKeyboard()
+                    }
+                }
+        )
     }
 
     private var inputBar: some View {
@@ -267,12 +260,18 @@ struct ItemDetailView: View {
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
 
-            recordButton
+            if hasUnsavedChanges, !showsRecordingUI {
+                sendButton
+                    .transition(.opacity)
+            } else {
+                recordButton
+                    .transition(.opacity)
+            }
         }
         .frame(minHeight: 48)
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
+        .background(Color(.secondarySystemGroupedBackground), in: Capsule())
     }
 
     private var attachButton: some View {
@@ -293,9 +292,25 @@ struct ItemDetailView: View {
         .opacity(showsRecordingUI || isTranscribing ? 0.45 : 1)
     }
 
+    private var sendButton: some View {
+        Button(action: saveMemo) {
+            Image(systemName: "arrow.up")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 36, height: 36)
+                .background {
+                    Circle()
+                        .fill(Color.accentColor)
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("sendMemoButton")
+        .accessibilityLabel("전송")
+    }
+
     private var recordButton: some View {
         Button(action: toggleRecording) {
-            Image(systemName: showsRecordingUI ? "pause.fill" : "mic.fill")
+            Image(systemName: showsRecordingUI ? "stop.fill" : "mic.fill")
                 .font(.system(size: 18, weight: .semibold))
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(showsRecordingUI ? .white : .primary)
@@ -370,7 +385,6 @@ struct ItemDetailView: View {
     private static let recordingUITransitionDelay: Duration = .milliseconds(120)
 
     private func toggleRecording() {
-        dismissKeyboard()
         guard !isHandlingRecordingTap else { return }
 
         if recorder.isRecording {
@@ -378,7 +392,6 @@ struct ItemDetailView: View {
             finishRecording()
             return
         }
-        triggerRecordingHaptic(isStarting: true)
         startRecording()
     }
 
@@ -423,6 +436,7 @@ struct ItemDetailView: View {
 
             do {
                 try recorder.startRecording(to: url)
+                triggerRecordingHaptic(isStarting: true)
                 try await Task.sleep(for: Self.recordingUITransitionDelay)
                 showsRecordingUI = true
                 isHandlingRecordingTap = false
@@ -528,7 +542,8 @@ struct ItemDetailView: View {
             let text = try await sttRouter.transcribe(audioFileURL: fileURL)
             guard !Task.isCancelled else { return }
 
-            item.appendTextEntry(text)
+            draftText = text
+            hasUnsavedChanges = true
             item.lastTranscribedAudioFileName = fileName
             try modelContext.save()
             transcriptionState = .idle
