@@ -406,6 +406,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "음성 메모를 녹음하기 위해 마이크 접근이 필요합니다.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "메모에 사진을 첨부하기 위해 사진 보관함 접근이 필요합니다.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "녹음한 음성을 텍스트로 변환하기 위해 음성 인식 접근이 필요합니다.";
 				INFOPLIST_KEY_XAIApiKey = "$(XAI_API_KEY)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -442,6 +443,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "음성 메모를 녹음하기 위해 마이크 접근이 필요합니다.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "메모에 사진을 첨부하기 위해 사진 보관함 접근이 필요합니다.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "녹음한 음성을 텍스트로 변환하기 위해 음성 인식 접근이 필요합니다.";
 				INFOPLIST_KEY_XAIApiKey = "$(XAI_API_KEY)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
