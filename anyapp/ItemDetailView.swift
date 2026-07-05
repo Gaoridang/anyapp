@@ -225,17 +225,7 @@ struct ItemDetailView: View {
 
     private var inputToolbar: some View {
         HStack(alignment: .bottom, spacing: 10) {
-            attachButton
-
-            TextField("생각을 적어보세요", text: $draftText, axis: .vertical)
-                .focused($isTextFieldFocused)
-                .accessibilityIdentifier("memoTextField")
-                .lineLimit(1...5)
-                .textFieldStyle(.plain)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
-                .disabled(showsRecordingUI)
+            inputBar
 
             if hasUnsavedChanges, !showsRecordingUI {
                 Button("저장", action: saveMemo)
@@ -245,20 +235,6 @@ struct ItemDetailView: View {
                     .accessibilityIdentifier("saveMemoButton")
                     .transition(.opacity.combined(with: .scale(scale: 0.92)))
             }
-
-            HStack(spacing: 8) {
-                if showsRecordingUI {
-                    Text(formattedDuration(recorder.elapsedTime))
-                        .font(.system(.subheadline, design: .rounded, weight: .medium))
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("recordingTimer")
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                }
-
-                recordButton
-            }
-            .padding(.bottom, 4)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -269,6 +245,34 @@ struct ItemDetailView: View {
                 // region, so the bar hugs the keyboard's top edge while resizing.
                 .ignoresSafeArea(.container, edges: .bottom)
         }
+    }
+
+    private var inputBar: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            attachButton
+
+            TextField("생각을 적어보세요", text: $draftText, axis: .vertical)
+                .focused($isTextFieldFocused)
+                .accessibilityIdentifier("memoTextField")
+                .lineLimit(1...5)
+                .textFieldStyle(.plain)
+                .disabled(showsRecordingUI)
+
+            if showsRecordingUI {
+                Text(formattedDuration(recorder.elapsedTime))
+                    .font(.system(.subheadline, design: .rounded, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("recordingTimer")
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+
+            recordButton
+        }
+        .padding(.leading, 6)
+        .padding(.trailing, 8)
+        .padding(.vertical, 6)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
     }
 
     private var attachButton: some View {
@@ -287,7 +291,6 @@ struct ItemDetailView: View {
         .accessibilityLabel("사진 추가")
         .disabled(showsRecordingUI || isTranscribing)
         .opacity(showsRecordingUI || isTranscribing ? 0.45 : 1)
-        .padding(.bottom, 4)
     }
 
     private var recordButton: some View {
