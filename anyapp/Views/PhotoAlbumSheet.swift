@@ -7,20 +7,30 @@ import PhotosUI
 import SwiftUI
 
 struct PhotoAlbumSheet: View {
+    @Environment(\.dismiss) private var dismiss
     @Binding var selectedItems: [PhotosPickerItem]
+    @State private var detent: PresentationDetent = .large
 
     var body: some View {
-        PhotosPicker(
-            selection: $selectedItems,
-            maxSelectionCount: 10,
-            matching: .images
-        ) {
-            EmptyView()
+        NavigationStack {
+            PhotosPicker(
+                selection: $selectedItems,
+                maxSelectionCount: 10,
+                matching: .images
+            ) {
+                EmptyView()
+            }
+            .photosPickerStyle(.inline)
+            .photosPickerAccessoryVisibility(.visible, edges: .top)
         }
-        .photosPickerStyle(.inline)
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.medium, .large], selection: $detent)
         .presentationDragIndicator(.visible)
         .accessibilityIdentifier("photoAlbumSheet")
+        .onChange(of: selectedItems) { oldValue, newValue in
+            if !oldValue.isEmpty, newValue.isEmpty {
+                dismiss()
+            }
+        }
     }
 }
 

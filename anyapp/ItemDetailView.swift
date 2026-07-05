@@ -224,14 +224,13 @@ struct ItemDetailView: View {
     }
 
     private var inputToolbar: some View {
-        HStack(alignment: .bottom, spacing: 10) {
+        HStack(alignment: .center, spacing: 10) {
             inputBar
 
             if hasUnsavedChanges, !showsRecordingUI {
                 Button("저장", action: saveMemo)
                     .font(.body.weight(.semibold))
                     .buttonStyle(.plain)
-                    .padding(.bottom, 10)
                     .accessibilityIdentifier("saveMemoButton")
                     .transition(.opacity.combined(with: .scale(scale: 0.92)))
             }
@@ -248,7 +247,7 @@ struct ItemDetailView: View {
     }
 
     private var inputBar: some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        HStack(alignment: .center, spacing: 8) {
             attachButton
 
             TextField("생각을 적어보세요", text: $draftText, axis: .vertical)
@@ -256,6 +255,7 @@ struct ItemDetailView: View {
                 .accessibilityIdentifier("memoTextField")
                 .lineLimit(1...5)
                 .textFieldStyle(.plain)
+                .padding(.vertical, 8)
                 .disabled(showsRecordingUI)
 
             if showsRecordingUI {
@@ -269,9 +269,9 @@ struct ItemDetailView: View {
 
             recordButton
         }
-        .padding(.leading, 6)
-        .padding(.trailing, 8)
-        .padding(.vertical, 6)
+        .frame(minHeight: 48)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
     }
 
