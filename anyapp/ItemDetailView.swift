@@ -80,6 +80,8 @@ struct ItemDetailView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: geometry.size.height, alignment: .top)
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: dismissKeyboard)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
