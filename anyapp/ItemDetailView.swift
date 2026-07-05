@@ -4,6 +4,7 @@
 //
 
 import AVFoundation
+import PhotosUI
 import SwiftData
 import SwiftUI
 import UIKit
@@ -37,6 +38,10 @@ struct ItemDetailView: View {
 
     @FocusState private var isTextFieldFocused: Bool
 
+    @State private var showPhotoAlbum = false
+    @State private var selectedPhotoItems: [PhotosPickerItem] = []
+    @State private var attachedImages: [UIImage] = []
+
     private var isTranscribing: Bool {
         if case .transcribing = transcriptionState { return true }
         return false
@@ -68,6 +73,8 @@ struct ItemDetailView: View {
 
                         savedNoteSection
                             .frame(maxWidth: .infinity, alignment: .top)
+
+                        attachedPhotosSection
 
                         Spacer(minLength: 0)
                     }
@@ -123,6 +130,12 @@ struct ItemDetailView: View {
         .onChange(of: draftText) {
             hasUnsavedChanges = !draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
+        .onChange(of: selectedPhotoItems) { _, newItems in
+            Task { await loadSelectedPhotos(from: newItems) }
+        }
+        .sheet(isPresented: $showPhotoAlbum) {
+            PhotoAlbumSheet(selectedItems: $selectedPhotoItems)
+        }
         .onDisappear(perform: teardown)
     }
 
@@ -143,6 +156,30 @@ struct ItemDetailView: View {
         .frame(minHeight: 44)
         .frame(maxWidth: .infinity)
         .animation(.easeInOut(duration: 0.25), value: showsRecordingUI)
+    }
+
+    @ViewBuilder
+    private var attachedPhotosSection: some View {
+        if !attachedImages.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(Array(attachedImages.enumerated()), id: \.offset) { index, image in
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 88, height: 88)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                            }
+                            .accessibilityIdentifier("attachedPhoto_\(index)")
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+            .accessibilityIdentifier("attachedPhotosSection")
+        }
     }
 
     @ViewBuilder
@@ -188,8 +225,11 @@ struct ItemDetailView: View {
 
     private var inputToolbar: some View {
         HStack(alignment: .bottom, spacing: 10) {
+            attachButton
+
             TextField("생각을 적어보세요", text: $draftText, axis: .vertical)
                 .focused($isTextFieldFocused)
+                .accessibilityIdentifier("memoTextField")
                 .lineLimit(1...5)
                 .textFieldStyle(.plain)
                 .padding(.horizontal, 14)
@@ -229,6 +269,25 @@ struct ItemDetailView: View {
                 // region, so the bar hugs the keyboard's top edge while resizing.
                 .ignoresSafeArea(.container, edges: .bottom)
         }
+    }
+
+    private var attachButton: some View {
+        Button(action: openPhotoAlbum) {
+            Image(systemName: "plus")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 36, height: 36)
+                .background {
+                    Circle()
+                        .fill(Color(.secondarySystemFill))
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("attachPhotoButton")
+        .accessibilityLabel("사진 추가")
+        .disabled(showsRecordingUI || isTranscribing)
+        .opacity(showsRecordingUI || isTranscribing ? 0.45 : 1)
+        .padding(.bottom, 4)
     }
 
     private var recordButton: some View {
@@ -564,6 +623,31 @@ struct ItemDetailView: View {
 
     private func dismissKeyboard() {
         isTextFieldFocused = false
+    }
+
+    private func openPhotoAlbum() {
+        isTextFieldFocused = false
+        showPhotoAlbum = true
+    }
+
+    @MainActor
+    private func loadSelectedPhotos(from items: [PhotosPickerItem]) async {
+        guard !items.isEmpty else { return }
+
+        var loadedImages: [UIImage] = []
+        for item in items {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data) else {
+                continue
+            }
+            loadedImages.append(image)
+        }
+
+        guard !loadedImages.isEmpty else { return }
+
+        attachedImages.append(contentsOf: loadedImages)
+        selectedPhotoItems = []
+        showPhotoAlbum = false
     }
 
     @MainActor
