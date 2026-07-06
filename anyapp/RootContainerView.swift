@@ -13,14 +13,28 @@ struct RootContainerView: View {
         VStack(spacing: 0) {
             TopSegmentNavigator(selection: $selectedTab)
 
-            TabView(selection: $selectedTab) {
-                ContentView()
-                    .tag(RootTab.memo)
+            // Use ScrollView paging instead of TabView(.page). UIPageViewController
+            // breaks the keyboard safe-area animation chain for ItemDetailView's
+            // bottom input toolbar, so the bar and content jump instead of tracking
+            // the keyboard.
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ContentView()
+                        .containerRelativeFrame(.horizontal)
+                        .containerRelativeFrame(.vertical)
+                        .id(RootTab.memo)
 
-                ShadowingView()
-                    .tag(RootTab.shadowing)
+                    ShadowingView()
+                        .containerRelativeFrame(.horizontal)
+                        .containerRelativeFrame(.vertical)
+                        .id(RootTab.shadowing)
+                }
+                .scrollTargetLayout()
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            .scrollTargetBehavior(.paging)
+            .scrollIndicators(.hidden)
+            .scrollPosition(id: $selectedTab)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Color(.systemGroupedBackground))
         .accessibilityIdentifier("rootContainer")
