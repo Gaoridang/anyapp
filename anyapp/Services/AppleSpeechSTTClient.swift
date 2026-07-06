@@ -43,11 +43,12 @@ struct SystemOnDeviceSpeechTranscriber: OnDeviceSpeechTranscribing {
     }
 
     func transcribe(audioFileURL: URL) async throws -> String {
+        let locale = Locale(identifier: localeIdentifier)
         guard let recognizer = makeRecognizer() else {
-            throw AppleSpeechSTTClient.STTError.onDeviceNotAvailable
+            throw AppleSpeechSTTClient.STTError.onDeviceNotAvailable(locale: locale)
         }
         guard recognizer.isAvailable, recognizer.supportsOnDeviceRecognition else {
-            throw AppleSpeechSTTClient.STTError.onDeviceNotAvailable
+            throw AppleSpeechSTTClient.STTError.onDeviceNotAvailable(locale: locale)
         }
 
         let request = SFSpeechURLRecognitionRequest(url: audioFileURL)
@@ -127,27 +128,35 @@ private final class RecognitionTaskBox: @unchecked Sendable {
 
 struct AppleSpeechSTTClient: SpeechTranscriptionClient {
     private let authorizationProvider: any SpeechAuthorizationProviding
-    private let transcriber: any OnDeviceSpeechTranscribing
+    private let transcriberFactory: @Sendable (String) -> any OnDeviceSpeechTranscribing
 
     init(
         authorizationProvider: any SpeechAuthorizationProviding = SystemSpeechAuthorizationProvider(),
-        transcriber: any OnDeviceSpeechTranscribing = SystemOnDeviceSpeechTranscriber()
+        transcriberFactory: @escaping @Sendable (String) -> any OnDeviceSpeechTranscribing = {
+            SystemOnDeviceSpeechTranscriber(localeIdentifier: $0)
+        }
     ) {
         self.authorizationProvider = authorizationProvider
-        self.transcriber = transcriber
+        self.transcriberFactory = transcriberFactory
     }
 
     nonisolated static var isOnDeviceAvailable: Bool {
-        SystemOnDeviceSpeechTranscriber().isOnDeviceAvailable
+        isOnDeviceAvailable(for: Locale(identifier: "ko-KR"))
     }
 
-    func transcribe(audioFileURL: URL) async throws -> String {
+    nonisolated static func isOnDeviceAvailable(for locale: Locale) -> Bool {
+        SystemOnDeviceSpeechTranscriber(localeIdentifier: locale.identifier).isOnDeviceAvailable
+    }
+
+    func transcribe(audioFileURL: URL, locale: Locale) async throws -> String {
         let status = await resolvedAuthorizationStatus()
         guard status == .authorized else {
             throw STTError.authorizationDenied
         }
+
+        let transcriber = transcriberFactory(locale.identifier)
         guard transcriber.isOnDeviceAvailable else {
-            throw STTError.onDeviceNotAvailable
+            throw STTError.onDeviceNotAvailable(locale: locale)
         }
         return try await transcriber.transcribe(audioFileURL: audioFileURL)
     }
@@ -160,7 +169,7 @@ struct AppleSpeechSTTClient: SpeechTranscriptionClient {
 
     enum STTError: LocalizedError, Equatable {
         case authorizationDenied
-        case onDeviceNotAvailable
+        case onDeviceNotAvailable(locale: Locale)
         case emptyResult
         case recognitionFailed
 
@@ -168,8 +177,12 @@ struct AppleSpeechSTTClient: SpeechTranscriptionClient {
             switch self {
             case .authorizationDenied:
                 "음성 인식 권한이 필요합니다. 설정에서 허용해 주세요."
-            case .onDeviceNotAvailable:
-                "기기 음성 인식을 사용할 수 없습니다. 설정 > 일반 > 키보드 > 받아쓰기에서 한국어를 설치해 주세요."
+            case .onDeviceNotAvailable(let locale):
+                if locale.language.languageCode?.identifier == "en" {
+                    "기기 음성 인식을 사용할 수 없습니다. 설정 > 일반 > 키보드 > 받아쓰기에서 영어를 설치해 주세요."
+                } else {
+                    "기기 음성 인식을 사용할 수 없습니다. 설정 > 일반 > 키보드 > 받아쓰기에서 한국어를 설치해 주세요."
+                }
             case .emptyResult:
                 "인식된 내용이 없습니다. 다시 녹음해 주세요."
             case .recognitionFailed:

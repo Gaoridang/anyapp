@@ -8,21 +8,14 @@ import SwiftData
 
 struct RootContainerView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @State private var selectedTab: RootTab? = .memo
-
-    private var selectedTabBinding: Binding<RootTab> {
-        Binding(
-            get: { selectedTab ?? .memo },
-            set: { selectedTab = $0 }
-        )
-    }
+    @State private var selectedTab: RootTab = .memo
 
     var body: some View {
         Group {
             if horizontalSizeClass == .compact {
                 RootPhoneShell(selectedTab: $selectedTab)
             } else {
-                ContentView(selectedTab: selectedTabBinding)
+                ContentView(selectedTab: $selectedTab)
             }
         }
         .background(Color(.systemGroupedBackground))
@@ -30,91 +23,82 @@ struct RootContainerView: View {
     }
 }
 
-/// iPhone root: one NavigationStack and one toolbar so the title stays fixed while
-/// memo/shadowing pages swipe underneath.
+/// iPhone root: Grok-style horizontal pager — Menu ← Memo → Shadowing → Practice.
+/// Each page uses a native NavigationStack header that slides with the page.
 private struct RootPhoneShell: View {
-    @Binding var selectedTab: RootTab?
+    @Binding var selectedTab: RootTab
     @Environment(\.modelContext) private var modelContext
 
     @State private var navigationPath = NavigationPath()
     @State private var selectedItemID: PersistentIdentifier?
-    @State private var showMenu = false
     @State private var showAPIKeySettings = false
-
-    private var activeTab: RootTab {
-        selectedTab ?? .memo
-    }
-
-    private var selectedTabBinding: Binding<RootTab> {
-        Binding(
-            get: { selectedTab ?? .memo },
-            set: { selectedTab = $0 }
-        )
-    }
+    @State private var hapticsReady = false
 
     var body: some View {
-        SideMenuDrawer(isPresented: $showMenu) {
-            NavigationStack(path: $navigationPath) {
-                tabPager
-                    .navigationTitle(activeTab.title)
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbarBackground(.automatic, for: .navigationBar)
-                    .toolbar {
-                        RootNavigationToolbar(
-                            showMenu: $showMenu,
-                            activeTab: activeTab,
-                            onAddMemo: addMemo
-                        )
-                    }
-                    .navigationDestination(for: PersistentIdentifier.self) { id in
-                        if let item = modelContext.model(for: id) as? Item {
-                            ItemDetailView(item: item)
-                        }
-                    }
-            }
+        tabPager
             .sheet(isPresented: $showAPIKeySettings) {
                 APIKeySettingsView()
             }
-        } menu: {
-            AppMenuView(
-                selectedTab: selectedTabBinding,
-                onShowSettings: {
-                    showMenu = false
-                    showAPIKeySettings = true
-                },
-                onClose: { showMenu = false }
-            )
-        }
+            .onChange(of: selectedTab) { oldTab, newTab in
+                guard hapticsReady, oldTab != newTab else { return }
+                RootPagerHaptics.pageChanged()
+            }
+            .onAppear {
+                hapticsReady = true
+            }
+    }
+
+    private var pagerTabPosition: Binding<RootTab?> {
+        Binding(
+            get: { selectedTab },
+            set: { newValue in
+                if let newValue {
+                    selectedTab = newValue
+                }
+            }
+        )
     }
 
     private var tabPager: some View {
-        GeometryReader { geometry in
-            ScrollView(.horizontal) {
-                HStack(spacing: 0) {
-                    MemoListView(
-                        navigationPath: $navigationPath,
-                        selectedItemID: $selectedItemID,
-                        showsNavigationLinks: true
-                    )
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .id(RootTab.memo)
+        ScrollView(.horizontal) {
+            HStack(spacing: 0) {
+                RootMenuPage(
+                    selectedTab: $selectedTab,
+                    onShowSettings: { showAPIKeySettings = true }
+                )
+                .containerRelativeFrame(.horizontal)
+                .id(RootTab.menu)
 
-                    ShadowingView(
-                        onShowSettings: { showAPIKeySettings = true }
-                    )
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .id(RootTab.shadowing)
-                }
-                .scrollTargetLayout()
+                RootMemoPage(
+                    selectedTab: $selectedTab,
+                    navigationPath: $navigationPath,
+                    selectedItemID: $selectedItemID,
+                    onAddMemo: addMemo
+                )
+                .containerRelativeFrame(.horizontal)
+                .id(RootTab.memo)
+
+                RootShadowingPage(
+                    selectedTab: $selectedTab,
+                    onShowSettings: { showAPIKeySettings = true }
+                )
+                .containerRelativeFrame(.horizontal)
+                .id(RootTab.shadowing)
+
+                RootSpeakingPracticePage(selectedTab: $selectedTab)
+                    .containerRelativeFrame(.horizontal)
+                    .id(RootTab.speakingPractice)
             }
-            .scrollTargetBehavior(.paging)
-            .scrollIndicators(.hidden)
-            .scrollPosition(id: $selectedTab)
+            .scrollTargetLayout()
         }
+        .scrollTargetBehavior(.paging)
+        .scrollIndicators(.hidden)
+        .scrollPosition(id: pagerTabPosition)
+        .scrollDisabled(!navigationPath.isEmpty)
+        .scrollClipDisabled()
     }
 
     func addMemo() {
-        guard activeTab == .memo else { return }
         withAnimation {
             let newItem = Item(timestamp: Date())
             modelContext.insert(newItem)

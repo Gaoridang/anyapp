@@ -14,107 +14,86 @@ struct ContentView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedItemID: PersistentIdentifier?
     @State private var navigationPath = NavigationPath()
-    @State private var showMenu = false
     @State private var showAPIKeySettings = false
 
     var body: some View {
-        if horizontalSizeClass == .compact {
-            phoneNavigation
-        } else {
-            tabletNavigation
+        NavigationSplitView {
+            sidebar
+        } detail: {
+            detailColumn
+        }
+        .sheet(isPresented: $showAPIKeySettings) {
+            APIKeySettingsView()
         }
     }
 
-    /// iPhone fallback when not hosted by RootPhoneShell.
-    private var phoneNavigation: some View {
-        SideMenuDrawer(isPresented: $showMenu) {
+    private var sidebar: some View {
+        List {
+            Section("기능") {
+                ForEach(RootTab.contentTabs) { tab in
+                    Button {
+                        selectedTab = tab
+                    } label: {
+                        HStack {
+                            Label(tab.title, systemImage: tab.menuIcon)
+                            Spacer()
+                            if selectedTab == tab {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .accessibilityIdentifier(tab.accessibilityIdentifier)
+                }
+            }
+
+            Section {
+                Button {
+                    showAPIKeySettings = true
+                } label: {
+                    Label("Grok API 키", systemImage: "key")
+                }
+                .accessibilityIdentifier("apiSettingsButton")
+            }
+        }
+        .listStyle(.sidebar)
+        .navigationTitle("메뉴")
+        .toolbar {
+            if selectedTab == .memo {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: addItem) {
+                        Label("새 메모", systemImage: "plus")
+                    }
+                    .accessibilityIdentifier("addMemoButton")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var detailColumn: some View {
+        switch selectedTab {
+        case .menu:
+            ContentUnavailableView(
+                "기능을 선택하세요",
+                systemImage: "sidebar.left",
+                description: Text("왼쪽에서 메모, 쉐도잉, 연습 중 하나를 선택하세요.")
+            )
+        case .memo:
             NavigationStack(path: $navigationPath) {
                 itemList
                     .navigationTitle("메모")
                     .navigationBarTitleDisplayMode(.inline)
-                    .toolbarBackground(.automatic, for: .navigationBar)
-                    .toolbar {
-                        RootNavigationToolbar(
-                            showMenu: $showMenu,
-                            activeTab: .memo,
-                            onAddMemo: addItem
-                        )
-                    }
                     .navigationDestination(for: PersistentIdentifier.self) { id in
                         if let item = modelContext.model(for: id) as? Item {
                             ItemDetailView(item: item)
                         }
                     }
             }
-            .sheet(isPresented: $showAPIKeySettings) {
-                APIKeySettingsView()
-            }
-        } menu: {
-            AppMenuView(
-                selectedTab: $selectedTab,
-                onShowSettings: {
-                    showMenu = false
-                    showAPIKeySettings = true
-                },
-                onClose: { showMenu = false }
-            )
-        }
-    }
-
-    /// iPad: sidebar selection + detail column (no NavigationLink push in sidebar).
-    private var tabletNavigation: some View {
-        SideMenuDrawer(isPresented: $showMenu) {
-            NavigationSplitView {
-                Group {
-                    switch selectedTab {
-                    case .memo:
-                        itemList
-                    case .shadowing:
-                        ShadowingView(onShowSettings: { showAPIKeySettings = true })
-                    }
-                }
-                .navigationTitle(selectedTab.title)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(.automatic, for: .navigationBar)
-                .toolbar {
-                    RootNavigationToolbar(
-                        showMenu: $showMenu,
-                        activeTab: selectedTab,
-                        onAddMemo: addItem
-                    )
-                }
-            } detail: {
-                if selectedTab == .memo {
-                    if let selectedItemID,
-                       let item = modelContext.model(for: selectedItemID) as? Item {
-                        ItemDetailView(item: item)
-                    } else {
-                        ContentUnavailableView(
-                            "메모 없음",
-                            systemImage: "note.text",
-                            description: Text("왼쪽에서 메모를 선택하거나 +를 눌러 새 메모를 만드세요.")
-                        )
-                    }
-                } else {
-                    ContentUnavailableView(
-                        "쉐도잉",
-                        systemImage: "text.bubble",
-                        description: Text("왼쪽에서 쉐도잉 연습을 시작하세요.")
-                    )
-                }
-            }
-            .sheet(isPresented: $showAPIKeySettings) {
-                APIKeySettingsView()
-            }
-        } menu: {
-            AppMenuView(
-                selectedTab: $selectedTab,
-                onShowSettings: {
-                    showMenu = false
-                    showAPIKeySettings = true
-                },
-                onClose: { showMenu = false }
-            )
+        case .shadowing:
+            ShadowingView(onShowSettings: { showAPIKeySettings = true })
+        case .speakingPractice:
+            SpeakingPracticeView()
         }
     }
 
@@ -122,7 +101,7 @@ struct ContentView: View {
         MemoListView(
             navigationPath: $navigationPath,
             selectedItemID: $selectedItemID,
-            showsNavigationLinks: horizontalSizeClass == .compact
+            showsNavigationLinks: true
         )
     }
 
@@ -132,9 +111,7 @@ struct ContentView: View {
             modelContext.insert(newItem)
             try? modelContext.save()
             selectedItemID = newItem.persistentModelID
-            if horizontalSizeClass == .compact {
-                navigationPath.append(newItem.persistentModelID)
-            }
+            navigationPath.append(newItem.persistentModelID)
         }
     }
 }

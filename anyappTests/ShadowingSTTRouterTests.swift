@@ -11,8 +11,9 @@ private struct MockSTTClient: SpeechTranscriptionClient {
     let languageTag: String
     let result: String
 
-    func transcribe(audioFileURL: URL) async throws -> String {
+    func transcribe(audioFileURL: URL, locale: Locale) async throws -> String {
         _ = audioFileURL
+        _ = locale
         return "\(languageTag):\(result)"
     }
 }

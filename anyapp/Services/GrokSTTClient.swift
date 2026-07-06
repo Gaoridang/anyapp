@@ -22,13 +22,13 @@ struct GrokSTTClient: SpeechTranscriptionClient {
         self.apiKeyProvider = apiKeyProvider
     }
 
-    func transcribe(audioFileURL: URL) async throws -> String {
+    func transcribe(audioFileURL: URL, locale: Locale) async throws -> String {
         guard let apiKey = apiKeyProvider(), !apiKey.isEmpty else {
             throw STTError.missingAPIKey
         }
 
         let boundary = "Boundary-\(UUID().uuidString)"
-        let body = try buildMultipartBody(for: audioFileURL, boundary: boundary)
+        let body = try buildMultipartBody(for: audioFileURL, boundary: boundary, locale: locale)
 
         var request = URLRequest(url: Self.endpoint)
         request.httpMethod = "POST"
@@ -54,7 +54,7 @@ struct GrokSTTClient: SpeechTranscriptionClient {
         }
     }
 
-    private func buildMultipartBody(for audioFileURL: URL, boundary: String) throws -> Data {
+    private func buildMultipartBody(for audioFileURL: URL, boundary: String, locale: Locale) throws -> Data {
         var body = Data()
         let lineBreak = "\r\n"
 
@@ -65,7 +65,7 @@ struct GrokSTTClient: SpeechTranscriptionClient {
         }
 
         appendField(name: "format", value: "true")
-        appendField(name: "language", value: language)
+        appendField(name: "language", value: resolvedLanguage(for: locale))
 
         let audioData = try Data(contentsOf: audioFileURL)
         body.append(Data("--\(boundary)\(lineBreak)".utf8))
@@ -77,6 +77,25 @@ struct GrokSTTClient: SpeechTranscriptionClient {
         body.append(audioData)
         body.append(Data("\(lineBreak)--\(boundary)--\(lineBreak)".utf8))
         return body
+    }
+
+    private func resolvedLanguage(for locale: Locale) -> String {
+        if locale.identifier == Locale(identifier: "ko-KR").identifier {
+            language
+        } else {
+            languageCode(for: locale)
+        }
+    }
+
+    private func languageCode(for locale: Locale) -> String {
+        switch locale.language.languageCode?.identifier {
+        case "ko":
+            "ko"
+        case "en":
+            "en"
+        default:
+            locale.language.languageCode?.identifier ?? "en"
+        }
     }
 
     private struct STTResponse: Decodable {

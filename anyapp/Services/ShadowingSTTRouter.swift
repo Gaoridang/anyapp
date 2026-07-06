@@ -47,10 +47,8 @@ struct ShadowingSTTRouter: Sendable {
         grokClientFactory: @escaping @Sendable (String) -> any SpeechTranscriptionClient = { language in
             GrokSTTClient(language: language)
         },
-        onDeviceClientFactory: @escaping @Sendable (String) -> any SpeechTranscriptionClient = { locale in
-            AppleSpeechSTTClient(
-                transcriber: SystemOnDeviceSpeechTranscriber(localeIdentifier: locale)
-            )
+        onDeviceClientFactory: @escaping @Sendable (String) -> any SpeechTranscriptionClient = { _ in
+            AppleSpeechSTTClient()
         }
     ) {
         self.hasGrokKey = hasGrokKey
@@ -64,7 +62,8 @@ struct ShadowingSTTRouter: Sendable {
                 .transcribe(audioFileURL: audioFileURL)
         }
 
+        let locale = Locale(identifier: language.appleLocaleIdentifier)
         let client = onDeviceClientFactory(language.appleLocaleIdentifier)
-        return try await client.transcribe(audioFileURL: audioFileURL)
+        return try await client.transcribe(audioFileURL: audioFileURL, locale: locale)
     }
 }

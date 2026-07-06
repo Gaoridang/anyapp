@@ -10,8 +10,9 @@ import Testing
 private struct MockSTTClient: SpeechTranscriptionClient {
     let result: String
 
-    func transcribe(audioFileURL: URL) async throws -> String {
-        result
+    func transcribe(audioFileURL: URL, locale: Locale) async throws -> String {
+        _ = locale
+        return result
     }
 }
 
@@ -21,8 +22,8 @@ struct STTRouterTests {
     @Test func resolvedProviderAutomaticUsesGrokWhenKeyExists() {
         let router = STTRouter(
             modeProvider: { .automatic },
-            hasGrokKey: { true },
-            onDeviceAvailability: { true }
+            onDeviceAvailability: { _ in true },
+            hasGrokKey: { true }
         )
 
         #expect(router.resolvedProvider() == .grok)
@@ -31,8 +32,8 @@ struct STTRouterTests {
     @Test func resolvedProviderAutomaticUsesOnDeviceWhenKeyMissing() {
         let router = STTRouter(
             modeProvider: { .automatic },
-            hasGrokKey: { false },
-            onDeviceAvailability: { true }
+            onDeviceAvailability: { _ in true },
+            hasGrokKey: { false }
         )
 
         #expect(router.resolvedProvider() == .onDevice)
@@ -41,8 +42,8 @@ struct STTRouterTests {
     @Test func resolvedProviderGrokModeAlwaysUsesGrok() {
         let router = STTRouter(
             modeProvider: { .grok },
-            hasGrokKey: { false },
-            onDeviceAvailability: { true }
+            onDeviceAvailability: { _ in true },
+            hasGrokKey: { false }
         )
 
         #expect(router.resolvedProvider() == .grok)
@@ -51,8 +52,8 @@ struct STTRouterTests {
     @Test func resolvedProviderOnDeviceModeAlwaysUsesOnDevice() {
         let router = STTRouter(
             modeProvider: { .onDevice },
-            hasGrokKey: { true },
-            onDeviceAvailability: { true }
+            onDeviceAvailability: { _ in true },
+            hasGrokKey: { true }
         )
 
         #expect(router.resolvedProvider() == .onDevice)
@@ -63,11 +64,11 @@ struct STTRouterTests {
             modeProvider: { .automatic },
             grokClient: MockSTTClient(result: "grok-text"),
             onDeviceClient: MockSTTClient(result: "device-text"),
-            onDeviceAvailability: { true },
+            onDeviceAvailability: { _ in true },
             hasGrokKey: { true }
         )
 
-        let text = try await router.transcribe(audioFileURL: sampleURL)
+        let text = try await router.transcribe(audioFileURL: sampleURL, locale: PracticeLocale.english)
         #expect(text == "grok-text")
     }
 
@@ -76,11 +77,11 @@ struct STTRouterTests {
             modeProvider: { .automatic },
             grokClient: MockSTTClient(result: "grok-text"),
             onDeviceClient: MockSTTClient(result: "device-text"),
-            onDeviceAvailability: { true },
+            onDeviceAvailability: { _ in true },
             hasGrokKey: { false }
         )
 
-        let text = try await router.transcribe(audioFileURL: sampleURL)
+        let text = try await router.transcribe(audioFileURL: sampleURL, locale: PracticeLocale.korean)
         #expect(text == "device-text")
     }
 
@@ -89,12 +90,12 @@ struct STTRouterTests {
             modeProvider: { .grok },
             grokClient: MockSTTClient(result: "grok-text"),
             onDeviceClient: MockSTTClient(result: "device-text"),
-            onDeviceAvailability: { true },
+            onDeviceAvailability: { _ in true },
             hasGrokKey: { false }
         )
 
         await #expect(throws: STTRouter.STTRouterError.grokUnavailable) {
-            try await router.transcribe(audioFileURL: sampleURL)
+            try await router.transcribe(audioFileURL: sampleURL, locale: PracticeLocale.korean)
         }
     }
 
@@ -103,12 +104,12 @@ struct STTRouterTests {
             modeProvider: { .onDevice },
             grokClient: MockSTTClient(result: "grok-text"),
             onDeviceClient: MockSTTClient(result: "device-text"),
-            onDeviceAvailability: { false },
+            onDeviceAvailability: { _ in false },
             hasGrokKey: { true }
         )
 
-        await #expect(throws: STTRouter.STTRouterError.onDeviceUnavailable) {
-            try await router.transcribe(audioFileURL: sampleURL)
+        await #expect(throws: STTRouter.STTRouterError.onDeviceUnavailable(locale: PracticeLocale.english)) {
+            try await router.transcribe(audioFileURL: sampleURL, locale: PracticeLocale.english)
         }
     }
 
