@@ -12,34 +12,29 @@ struct RootContainerView: View {
     private let pageTransition = Animation.spring(response: 0.38, dampingFraction: 0.86)
 
     var body: some View {
-        VStack(spacing: 0) {
-            TopSegmentNavigator(selection: $selectedTab)
+        // Use ScrollView paging instead of TabView(.page). UIPageViewController
+        // breaks the keyboard safe-area animation chain for ItemDetailView's
+        // bottom input toolbar, so the bar and content jump instead of tracking
+        // the keyboard.
+        GeometryReader { geometry in
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ContentView(selectedTab: $selectedTab)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .id(RootTab.memo)
+                        .rootPageTransition()
 
-            // Use ScrollView paging instead of TabView(.page). UIPageViewController
-            // breaks the keyboard safe-area animation chain for ItemDetailView's
-            // bottom input toolbar, so the bar and content jump instead of tracking
-            // the keyboard.
-            GeometryReader { geometry in
-                ScrollView(.horizontal) {
-                    HStack(spacing: 0) {
-                        ContentView()
-                            .frame(width: geometry.size.width, height: geometry.size.height)
-                            .id(RootTab.memo)
-                            .rootPageTransition()
-
-                        ShadowingView()
-                            .frame(width: geometry.size.width, height: geometry.size.height)
-                            .id(RootTab.shadowing)
-                            .rootPageTransition()
-                    }
-                    .scrollTargetLayout()
+                    ShadowingView(selectedTab: $selectedTab)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .id(RootTab.shadowing)
+                        .rootPageTransition()
                 }
-                .scrollTargetBehavior(.paging)
-                .scrollIndicators(.hidden)
-                .scrollPosition(id: $selectedTab)
-                .scrollClipDisabled()
+                .scrollTargetLayout()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .scrollTargetBehavior(.paging)
+            .scrollIndicators(.hidden)
+            .scrollPosition(id: $selectedTab)
+            .scrollClipDisabled()
         }
         .animation(pageTransition, value: selectedTab)
         .background(Color(.systemGroupedBackground))

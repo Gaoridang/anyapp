@@ -9,6 +9,7 @@ import SwiftUI
 import SwiftData
 
 struct ContentView: View {
+    @Binding var selectedTab: RootTab
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Query(sort: \Item.timestamp, order: .reverse) private var items: [Item]
@@ -72,7 +73,11 @@ struct ContentView: View {
         .contentMargins(.top, 8, for: .scrollContent)
         .safeAreaPadding(.bottom)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.automatic, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                TopSegmentNavigator(selection: $selectedTab, style: .navigationBar)
+            }
             ToolbarItem(placement: .navigationBarLeading) {
                 Button {
                     showAPIKeySettings = true
@@ -159,6 +164,6 @@ private struct ItemRowView: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(selectedTab: .constant(.memo))
         .modelContainer(for: Item.self, inMemory: true)
 }

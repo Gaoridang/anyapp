@@ -30,12 +30,18 @@ enum RootTab: Int, CaseIterable, Identifiable, Hashable {
     }
 }
 
+enum TopSegmentNavigatorStyle {
+    case standalone
+    case navigationBar
+}
+
 struct TopSegmentNavigator: View {
     @Binding var selection: RootTab
+    var style: TopSegmentNavigatorStyle = .standalone
     @Namespace private var indicatorNamespace
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: style == .navigationBar ? 4 : 8) {
             ForEach(RootTab.allCases) { tab in
                 Button {
                     withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
@@ -43,10 +49,10 @@ struct TopSegmentNavigator: View {
                     }
                 } label: {
                     Text(tab.title)
-                        .font(.subheadline.weight(selection == tab ? .semibold : .medium))
+                        .font(tabFont(isSelected: selection == tab))
                         .foregroundStyle(selection == tab ? Color.primary : Color.secondary)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 10)
+                        .padding(.horizontal, style == .navigationBar ? 14 : 18)
+                        .padding(.vertical, style == .navigationBar ? 6 : 10)
                         .background {
                             if selection == tab {
                                 Capsule()
@@ -60,12 +66,21 @@ struct TopSegmentNavigator: View {
                 .accessibilityAddTraits(selection == tab ? .isSelected : [])
             }
         }
-        .padding(4)
+        .padding(style == .navigationBar ? 3 : 4)
         .background(Color(.tertiarySystemFill), in: Capsule())
-        .padding(.horizontal, 20)
-        .padding(.top, 8)
-        .padding(.bottom, 6)
+        .padding(.horizontal, style == .standalone ? 20 : 0)
+        .padding(.top, style == .standalone ? 8 : 0)
+        .padding(.bottom, style == .standalone ? 6 : 0)
         .accessibilityIdentifier("topSegmentNavigator")
+    }
+
+    private func tabFont(isSelected: Bool) -> Font {
+        switch style {
+        case .standalone:
+            .subheadline.weight(isSelected ? .semibold : .medium)
+        case .navigationBar:
+            .caption.weight(isSelected ? .semibold : .medium)
+        }
     }
 }
 
