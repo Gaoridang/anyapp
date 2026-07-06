@@ -11,12 +11,21 @@ struct ShadowingView: View {
 
     @State private var session = ShadowingSessionModel()
     @State private var shakeVerification = false
+    @State private var showMenu = false
 
     var body: some View {
         VStack(spacing: 0) {
-            ScreenHeaderBar(title: "쉐도잉", selectedTab: $selectedTab, onShowSettings: onShowSettings)
+            ScreenHeaderBar(
+                title: "쉐도잉",
+                selectedTab: $selectedTab,
+                showMenu: $showMenu,
+                onShowSettings: onShowSettings
+            )
 
             scrollContent
+        }
+        .sheet(isPresented: $showMenu) {
+            AppMenuView(selectedTab: $selectedTab, onShowSettings: onShowSettings)
         }
     }
 

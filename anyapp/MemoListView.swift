@@ -17,9 +17,16 @@ struct MemoListView: View {
     var onShowSettings: () -> Void
     var onAddMemo: () -> Void
 
+    @State private var showMenu = false
+
     var body: some View {
         VStack(spacing: 0) {
-            ScreenHeaderBar(title: "메모", selectedTab: $selectedTab, onShowSettings: onShowSettings) {
+            ScreenHeaderBar(
+                title: "메모",
+                selectedTab: $selectedTab,
+                showMenu: $showMenu,
+                onShowSettings: onShowSettings
+            ) {
                 EditButton()
                 Button(action: onAddMemo) {
                     Label("새 메모", systemImage: "plus")
@@ -44,6 +51,20 @@ struct MemoListView: View {
             .contentMargins(.top, 8, for: .scrollContent)
             .safeAreaPadding(.bottom)
         }
+        .simultaneousGesture(menuSwipeGesture)
+        .sheet(isPresented: $showMenu) {
+            AppMenuView(selectedTab: $selectedTab, onShowSettings: onShowSettings)
+        }
+    }
+
+    private var menuSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 20, coordinateSpace: .local)
+            .onEnded { value in
+                guard value.startLocation.x < 44 else { return }
+                guard value.translation.width > 50 else { return }
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                showMenu = true
+            }
     }
 
     private func deleteItems(offsets: IndexSet) {

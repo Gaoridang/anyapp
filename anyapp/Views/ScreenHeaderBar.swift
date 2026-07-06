@@ -8,10 +8,9 @@ import SwiftUI
 struct ScreenHeaderBar<Trailing: View>: View {
     let title: String
     @Binding var selectedTab: RootTab
+    @Binding var showMenu: Bool
     var onShowSettings: () -> Void
     @ViewBuilder var trailing: () -> Trailing
-
-    @State private var showMenu = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
@@ -39,15 +38,13 @@ struct ScreenHeaderBar<Trailing: View>: View {
         .padding(.trailing, 12)
         .padding(.top, 4)
         .padding(.bottom, 8)
-        .sheet(isPresented: $showMenu) {
-            AppMenuView(selectedTab: $selectedTab, onShowSettings: onShowSettings)
-        }
     }
 }
 
 #Preview {
     @Previewable @State var selectedTab = RootTab.memo
-    ScreenHeaderBar(title: "메모", selectedTab: $selectedTab, onShowSettings: {}) {
+    @Previewable @State var showMenu = false
+    ScreenHeaderBar(title: "메모", selectedTab: $selectedTab, showMenu: $showMenu, onShowSettings: {}) {
         Button(action: {}) {
             Image(systemName: "plus")
         }
