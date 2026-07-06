@@ -25,7 +25,7 @@ struct anyappApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootContainerView()
         }
         .modelContainer(sharedModelContainer)
     }

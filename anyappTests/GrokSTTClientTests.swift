@@ -7,31 +7,6 @@ import Foundation
 import Testing
 @testable import anyapp
 
-private final class MockURLProtocol: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
-
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-    override func startLoading() {
-        guard let handler = Self.requestHandler else {
-            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
-            return
-        }
-
-        do {
-            let (response, data) = try handler(request)
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: data)
-            client?.urlProtocolDidFinishLoading(self)
-        } catch {
-            client?.urlProtocol(self, didFailWithError: error)
-        }
-    }
-
-    override func stopLoading() {}
-}
-
 struct GrokSTTClientTests {
     private func makeSession() -> URLSession {
         let config = URLSessionConfiguration.ephemeral
@@ -85,6 +60,35 @@ struct GrokSTTClientTests {
         await #expect(throws: GrokSTTClient.STTError.missingAPIKey) {
             try await client.transcribe(audioFileURL: url)
         }
+    }
+
+    @Test func transcribeEnglishUsesLanguageField() async throws {
+        MockURLProtocol.requestHandler = { request in
+            let body = request.httpBody ?? Data()
+            let bodyString = String(decoding: body, as: UTF8.self)
+            #expect(bodyString.contains("name=\"language\""))
+            #expect(bodyString.contains("en"))
+
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            let data = #"{"text":"Hello"}"#.data(using: .utf8)!
+            return (response, data)
+        }
+
+        let client = GrokSTTClient(
+            session: makeSession(),
+            language: "en",
+            apiKeyProvider: { "test-key" }
+        )
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("english.m4a")
+        try Data([0x00]).write(to: url)
+
+        let text = try await client.transcribe(audioFileURL: url)
+        #expect(text == "Hello")
     }
 
     @Test func transcribeUnauthorizedThrows() async {
