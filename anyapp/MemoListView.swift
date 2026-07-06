@@ -13,50 +13,24 @@ struct MemoListView: View {
     @Binding var navigationPath: NavigationPath
     @Binding var selectedItemID: PersistentIdentifier?
     var showsNavigationLinks: Bool
-    var onAddMemo: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScreenHeaderBar(title: "메모", onOpenMenu: openMenu) {
-                EditButton()
-                Button(action: onAddMemo) {
-                    Label("새 메모", systemImage: "plus")
-                }
-                .accessibilityIdentifier("addMemoButton")
-            }
-
-            List(selection: showsNavigationLinks ? nil : $selectedItemID) {
-                ForEach(items) { item in
-                    if showsNavigationLinks {
-                        NavigationLink(value: item.persistentModelID) {
-                            ItemRowView(item: item)
-                        }
-                    } else {
+        List(selection: showsNavigationLinks ? nil : $selectedItemID) {
+            ForEach(items) { item in
+                if showsNavigationLinks {
+                    NavigationLink(value: item.persistentModelID) {
                         ItemRowView(item: item)
-                            .tag(item.persistentModelID)
                     }
+                } else {
+                    ItemRowView(item: item)
+                        .tag(item.persistentModelID)
                 }
-                .onDelete(perform: deleteItems)
             }
-            .listStyle(.insetGrouped)
-            .contentMargins(.top, 8, for: .scrollContent)
-            .safeAreaPadding(.bottom)
+            .onDelete(perform: deleteItems)
         }
-        .simultaneousGesture(menuSwipeGesture)
-    }
-
-    private func openMenu() {
-        navigationPath.append(AppMenuRoute.menu)
-    }
-
-    private var menuSwipeGesture: some Gesture {
-        DragGesture(minimumDistance: 20, coordinateSpace: .local)
-            .onEnded { value in
-                guard value.startLocation.x < 44 else { return }
-                guard value.translation.width > 50 else { return }
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                openMenu()
-            }
+        .listStyle(.insetGrouped)
+        .contentMargins(.top, 8, for: .scrollContent)
+        .safeAreaPadding(.bottom)
     }
 
     private func deleteItems(offsets: IndexSet) {
@@ -114,9 +88,9 @@ struct ItemRowView: View {
         MemoListView(
             navigationPath: .constant(NavigationPath()),
             selectedItemID: .constant(nil),
-            showsNavigationLinks: true,
-            onAddMemo: {}
+            showsNavigationLinks: true
         )
+        .navigationTitle("메모")
     }
     .modelContainer(for: Item.self, inMemory: true)
 }

@@ -30,15 +30,20 @@ struct RootContainerView: View {
     }
 }
 
-/// iPhone root: one NavigationStack and one toolbar so the segment control stays
-/// fixed while memo/shadowing pages swipe underneath.
+/// iPhone root: one NavigationStack and one toolbar so the title stays fixed while
+/// memo/shadowing pages swipe underneath.
 private struct RootPhoneShell: View {
     @Binding var selectedTab: RootTab?
     @Environment(\.modelContext) private var modelContext
 
     @State private var navigationPath = NavigationPath()
     @State private var selectedItemID: PersistentIdentifier?
+    @State private var showMenu = false
     @State private var showAPIKeySettings = false
+
+    private var activeTab: RootTab {
+        selectedTab ?? .memo
+    }
 
     private var selectedTabBinding: Binding<RootTab> {
         Binding(
@@ -48,23 +53,37 @@ private struct RootPhoneShell: View {
     }
 
     var body: some View {
-        NavigationStack(path: $navigationPath) {
-            tabPager
-                .toolbar(.hidden, for: .navigationBar)
-                .navigationDestination(for: AppMenuRoute.self) { _ in
-                    AppMenuView(
-                        selectedTab: selectedTabBinding,
-                        onShowSettings: { showAPIKeySettings = true }
-                    )
-                }
-                .navigationDestination(for: PersistentIdentifier.self) { id in
-                    if let item = modelContext.model(for: id) as? Item {
-                        ItemDetailView(item: item)
+        SideMenuDrawer(isPresented: $showMenu) {
+            NavigationStack(path: $navigationPath) {
+                tabPager
+                    .navigationTitle(activeTab.title)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbarBackground(.automatic, for: .navigationBar)
+                    .toolbar {
+                        RootNavigationToolbar(
+                            showMenu: $showMenu,
+                            activeTab: activeTab,
+                            onAddMemo: addMemo
+                        )
                     }
-                }
-        }
-        .sheet(isPresented: $showAPIKeySettings) {
-            APIKeySettingsView()
+                    .navigationDestination(for: PersistentIdentifier.self) { id in
+                        if let item = modelContext.model(for: id) as? Item {
+                            ItemDetailView(item: item)
+                        }
+                    }
+            }
+            .sheet(isPresented: $showAPIKeySettings) {
+                APIKeySettingsView()
+            }
+        } menu: {
+            AppMenuView(
+                selectedTab: selectedTabBinding,
+                onShowSettings: {
+                    showMenu = false
+                    showAPIKeySettings = true
+                },
+                onClose: { showMenu = false }
+            )
         }
     }
 
@@ -75,16 +94,13 @@ private struct RootPhoneShell: View {
                     MemoListView(
                         navigationPath: $navigationPath,
                         selectedItemID: $selectedItemID,
-                        showsNavigationLinks: true,
-                        onAddMemo: addMemo
+                        showsNavigationLinks: true
                     )
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .id(RootTab.memo)
 
                     ShadowingView(
-                        selectedTab: selectedTabBinding,
-                        onShowSettings: { showAPIKeySettings = true },
-                        onOpenMenu: { navigationPath.append(AppMenuRoute.menu) }
+                        onShowSettings: { showAPIKeySettings = true }
                     )
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .id(RootTab.shadowing)
@@ -98,6 +114,7 @@ private struct RootPhoneShell: View {
     }
 
     func addMemo() {
+        guard activeTab == .memo else { return }
         withAnimation {
             let newItem = Item(timestamp: Date())
             modelContext.insert(newItem)
