@@ -15,7 +15,9 @@ struct ShadowingView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScreenHeaderBar(title: "쉐도잉", onOpenMenu: onOpenMenu)
+            ScreenHeaderBar(title: "쉐도잉", onOpenMenu: onOpenMenu) {
+                EmptyView()
+            }
 
             scrollContent
         }
