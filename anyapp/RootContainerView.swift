@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct RootContainerView: View {
     @State private var selectedTab: RootTab = .memo

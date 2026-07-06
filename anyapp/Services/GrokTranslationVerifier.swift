@@ -98,7 +98,7 @@ struct GrokTranslationVerifier: Sendable {
             guard let content = decoded.choices.first?.message.content else {
                 throw VerifierError.invalidResponse
             }
-            return try parseVerdict(from: content)
+            return try Self.parseVerdict(from: content)
         case 401:
             throw VerifierError.unauthorized
         case 429:
