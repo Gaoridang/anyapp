@@ -40,10 +40,6 @@ private struct RootPhoneShell: View {
     @State private var selectedItemID: PersistentIdentifier?
     @State private var showAPIKeySettings = false
 
-    private var activeTab: RootTab {
-        selectedTab ?? .memo
-    }
-
     private var selectedTabBinding: Binding<RootTab> {
         Binding(
             get: { selectedTab ?? .memo },
@@ -54,9 +50,13 @@ private struct RootPhoneShell: View {
     var body: some View {
         NavigationStack(path: $navigationPath) {
             tabPager
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(.automatic, for: .navigationBar)
-                .toolbar { rootToolbar }
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(for: AppMenuRoute.self) { _ in
+                    AppMenuView(
+                        selectedTab: selectedTabBinding,
+                        onShowSettings: { showAPIKeySettings = true }
+                    )
+                }
                 .navigationDestination(for: PersistentIdentifier.self) { id in
                     if let item = modelContext.model(for: id) as? Item {
                         ItemDetailView(item: item)
@@ -75,14 +75,19 @@ private struct RootPhoneShell: View {
                     MemoListView(
                         navigationPath: $navigationPath,
                         selectedItemID: $selectedItemID,
-                        showsNavigationLinks: true
+                        showsNavigationLinks: true,
+                        onAddMemo: addMemo
                     )
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .id(RootTab.memo)
 
-                    ShadowingView()
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                        .id(RootTab.shadowing)
+                    ShadowingView(
+                        selectedTab: selectedTabBinding,
+                        onShowSettings: { showAPIKeySettings = true },
+                        onOpenMenu: { navigationPath.append(AppMenuRoute.menu) }
+                    )
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .id(RootTab.shadowing)
                 }
                 .scrollTargetLayout()
             }
@@ -92,36 +97,7 @@ private struct RootPhoneShell: View {
         }
     }
 
-    @ToolbarContentBuilder
-    private var rootToolbar: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
-            TopSegmentNavigator(selection: selectedTabBinding, style: .navigationBar)
-        }
-        ToolbarItem(placement: .navigationBarLeading) {
-            Button {
-                showAPIKeySettings = true
-            } label: {
-                Label("설정", systemImage: "key")
-            }
-            .accessibilityIdentifier("apiSettingsButton")
-        }
-        ToolbarItem(placement: .navigationBarTrailing) {
-            EditButton()
-                .disabled(activeTab != .memo)
-                .opacity(activeTab == .memo ? 1 : 0.35)
-        }
-        ToolbarItem(placement: .navigationBarTrailing) {
-            Button(action: addMemo) {
-                Label("새 메모", systemImage: "plus")
-            }
-            .accessibilityIdentifier("addMemoButton")
-            .disabled(activeTab != .memo)
-            .opacity(activeTab == .memo ? 1 : 0.35)
-        }
-    }
-
     func addMemo() {
-        guard activeTab == .memo else { return }
         withAnimation {
             let newItem = Item(timestamp: Date())
             modelContext.insert(newItem)
