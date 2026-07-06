@@ -18,10 +18,12 @@ struct RootContainerView: View {
     }
 
     var body: some View {
-        if horizontalSizeClass == .compact {
-            RootPhoneShell(selectedTab: $selectedTab)
-        } else {
-            ContentView(selectedTab: selectedTabBinding)
+        Group {
+            if horizontalSizeClass == .compact {
+                RootPhoneShell(selectedTab: $selectedTab)
+            } else {
+                ContentView(selectedTab: selectedTabBinding)
+            }
         }
         .background(Color(.systemGroupedBackground))
         .accessibilityIdentifier("rootContainer")
