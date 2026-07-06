@@ -7,9 +7,16 @@ import SwiftUI
 import SwiftData
 
 struct RootContainerView: View {
-    @State private var selectedTab: RootTab = .memo
+    @State private var selectedTab: RootTab? = .memo
 
     private let pageTransition = Animation.spring(response: 0.38, dampingFraction: 0.86)
+
+    private var selectedTabBinding: Binding<RootTab> {
+        Binding(
+            get: { selectedTab ?? .memo },
+            set: { selectedTab = $0 }
+        )
+    }
 
     var body: some View {
         // Use ScrollView paging instead of TabView(.page). UIPageViewController
@@ -19,12 +26,12 @@ struct RootContainerView: View {
         GeometryReader { geometry in
             ScrollView(.horizontal) {
                 HStack(spacing: 0) {
-                    ContentView(selectedTab: $selectedTab)
+                    ContentView(selectedTab: selectedTabBinding)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                         .id(RootTab.memo)
                         .rootPageTransition()
 
-                    ShadowingView(selectedTab: $selectedTab)
+                    ShadowingView(selectedTab: selectedTabBinding)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                         .id(RootTab.shadowing)
                         .rootPageTransition()
