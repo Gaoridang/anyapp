@@ -5,6 +5,10 @@
 
 import SwiftUI
 
+enum AppMenuRoute: Hashable {
+    case menu
+}
+
 struct AppMenuView: View {
     @Binding var selectedTab: RootTab
     var onShowSettings: () -> Void
@@ -12,7 +16,9 @@ struct AppMenuView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            menuHeader
+
             List {
                 Section("기능") {
                     ForEach(RootTab.allCases) { tab in
@@ -48,15 +54,35 @@ struct AppMenuView: View {
                     .accessibilityIdentifier("apiSettingsButton")
                 }
             }
-            .navigationTitle("메뉴")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("닫기") { dismiss() }
-                }
-            }
+            .listStyle(.insetGrouped)
+            .contentMargins(.top, 8, for: .scrollContent)
         }
-        .presentationDetents([.medium, .large])
+        .background(Color(.systemGroupedBackground))
+        .toolbar(.hidden, for: .navigationBar)
+        .accessibilityIdentifier("appMenuView")
+    }
+
+    private var menuHeader: some View {
+        HStack(spacing: 8) {
+            Button(action: dismiss.callAsFunction) {
+                Image(systemName: "chevron.backward")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("뒤로")
+
+            Text("메뉴")
+                .font(.title2.weight(.bold))
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 4)
+        .padding(.trailing, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
     }
 }
 
@@ -71,6 +97,7 @@ private enum AppMenuPlaceholder: String, CaseIterable, Identifiable {
 }
 
 #Preview {
-    @Previewable @State var selectedTab = RootTab.memo
-    AppMenuView(selectedTab: $selectedTab, onShowSettings: {})
+    NavigationStack {
+        AppMenuView(selectedTab: .constant(.memo), onShowSettings: {})
+    }
 }

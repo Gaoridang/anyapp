@@ -7,16 +7,12 @@ import SwiftUI
 
 struct ScreenHeaderBar<Trailing: View>: View {
     let title: String
-    @Binding var selectedTab: RootTab
-    @Binding var showMenu: Bool
-    var onShowSettings: () -> Void
+    var onOpenMenu: () -> Void
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            Button {
-                showMenu = true
-            } label: {
+            Button(action: onOpenMenu) {
                 Image(systemName: "line.3.horizontal")
                     .font(.body.weight(.medium))
                     .frame(width: 44, height: 44)
@@ -42,9 +38,7 @@ struct ScreenHeaderBar<Trailing: View>: View {
 }
 
 #Preview {
-    @Previewable @State var selectedTab = RootTab.memo
-    @Previewable @State var showMenu = false
-    ScreenHeaderBar(title: "메모", selectedTab: $selectedTab, showMenu: $showMenu, onShowSettings: {}) {
+    ScreenHeaderBar(title: "메모", onOpenMenu: {}) {
         Button(action: {}) {
             Image(systemName: "plus")
         }

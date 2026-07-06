@@ -29,6 +29,12 @@ struct ContentView: View {
         NavigationStack(path: $navigationPath) {
             itemList
                 .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(for: AppMenuRoute.self) { _ in
+                    AppMenuView(
+                        selectedTab: $selectedTab,
+                        onShowSettings: { showAPIKeySettings = true }
+                    )
+                }
                 .navigationDestination(for: PersistentIdentifier.self) { id in
                     if let item = modelContext.model(for: id) as? Item {
                         ItemDetailView(item: item)
@@ -43,12 +49,22 @@ struct ContentView: View {
     /// iPad: sidebar selection + detail column (no NavigationLink push in sidebar).
     private var tabletNavigation: some View {
         NavigationSplitView {
-            Group {
-                switch selectedTab {
-                case .memo:
-                    itemList
-                case .shadowing:
-                    ShadowingView(
+            NavigationStack(path: $navigationPath) {
+                Group {
+                    switch selectedTab {
+                    case .memo:
+                        itemList
+                    case .shadowing:
+                        ShadowingView(
+                            selectedTab: $selectedTab,
+                            onShowSettings: { showAPIKeySettings = true },
+                            onOpenMenu: { navigationPath.append(AppMenuRoute.menu) }
+                        )
+                    }
+                }
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(for: AppMenuRoute.self) { _ in
+                    AppMenuView(
                         selectedTab: $selectedTab,
                         onShowSettings: { showAPIKeySettings = true }
                     )
@@ -83,9 +99,7 @@ struct ContentView: View {
         MemoListView(
             navigationPath: $navigationPath,
             selectedItemID: $selectedItemID,
-            selectedTab: $selectedTab,
             showsNavigationLinks: horizontalSizeClass == .compact,
-            onShowSettings: { showAPIKeySettings = true },
             onAddMemo: addItem
         )
     }

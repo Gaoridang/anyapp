@@ -14,6 +14,9 @@ final class ShadowingUITests: XCTestCase {
         let menuButton = app.buttons["appMenuButton"]
         XCTAssertTrue(menuButton.waitForExistence(timeout: 5))
         menuButton.tap()
+
+        let menuView = app.otherElements["appMenuView"]
+        XCTAssertTrue(menuView.waitForExistence(timeout: 5))
     }
 
     func testMenuSwitchesToShadowingTab() throws {

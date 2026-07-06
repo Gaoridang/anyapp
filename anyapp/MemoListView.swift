@@ -12,21 +12,12 @@ struct MemoListView: View {
 
     @Binding var navigationPath: NavigationPath
     @Binding var selectedItemID: PersistentIdentifier?
-    @Binding var selectedTab: RootTab
     var showsNavigationLinks: Bool
-    var onShowSettings: () -> Void
     var onAddMemo: () -> Void
-
-    @State private var showMenu = false
 
     var body: some View {
         VStack(spacing: 0) {
-            ScreenHeaderBar(
-                title: "메모",
-                selectedTab: $selectedTab,
-                showMenu: $showMenu,
-                onShowSettings: onShowSettings
-            ) {
+            ScreenHeaderBar(title: "메모", onOpenMenu: openMenu) {
                 EditButton()
                 Button(action: onAddMemo) {
                     Label("새 메모", systemImage: "plus")
@@ -52,9 +43,10 @@ struct MemoListView: View {
             .safeAreaPadding(.bottom)
         }
         .simultaneousGesture(menuSwipeGesture)
-        .sheet(isPresented: $showMenu) {
-            AppMenuView(selectedTab: $selectedTab, onShowSettings: onShowSettings)
-        }
+    }
+
+    private func openMenu() {
+        navigationPath.append(AppMenuRoute.menu)
     }
 
     private var menuSwipeGesture: some Gesture {
@@ -63,7 +55,7 @@ struct MemoListView: View {
                 guard value.startLocation.x < 44 else { return }
                 guard value.translation.width > 50 else { return }
                 guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                showMenu = true
+                openMenu()
             }
     }
 
@@ -122,9 +114,7 @@ struct ItemRowView: View {
         MemoListView(
             navigationPath: .constant(NavigationPath()),
             selectedItemID: .constant(nil),
-            selectedTab: .constant(.memo),
             showsNavigationLinks: true,
-            onShowSettings: {},
             onAddMemo: {}
         )
     }

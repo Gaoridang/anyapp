@@ -51,6 +51,12 @@ private struct RootPhoneShell: View {
         NavigationStack(path: $navigationPath) {
             tabPager
                 .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(for: AppMenuRoute.self) { _ in
+                    AppMenuView(
+                        selectedTab: selectedTabBinding,
+                        onShowSettings: { showAPIKeySettings = true }
+                    )
+                }
                 .navigationDestination(for: PersistentIdentifier.self) { id in
                     if let item = modelContext.model(for: id) as? Item {
                         ItemDetailView(item: item)
@@ -69,9 +75,7 @@ private struct RootPhoneShell: View {
                     MemoListView(
                         navigationPath: $navigationPath,
                         selectedItemID: $selectedItemID,
-                        selectedTab: selectedTabBinding,
                         showsNavigationLinks: true,
-                        onShowSettings: { showAPIKeySettings = true },
                         onAddMemo: addMemo
                     )
                     .frame(width: geometry.size.width, height: geometry.size.height)
@@ -79,7 +83,8 @@ private struct RootPhoneShell: View {
 
                     ShadowingView(
                         selectedTab: selectedTabBinding,
-                        onShowSettings: { showAPIKeySettings = true }
+                        onShowSettings: { showAPIKeySettings = true },
+                        onOpenMenu: { navigationPath.append(AppMenuRoute.menu) }
                     )
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .id(RootTab.shadowing)

@@ -8,24 +8,16 @@ import SwiftUI
 struct ShadowingView: View {
     @Binding var selectedTab: RootTab
     var onShowSettings: () -> Void
+    var onOpenMenu: () -> Void
 
     @State private var session = ShadowingSessionModel()
     @State private var shakeVerification = false
-    @State private var showMenu = false
 
     var body: some View {
         VStack(spacing: 0) {
-            ScreenHeaderBar(
-                title: "쉐도잉",
-                selectedTab: $selectedTab,
-                showMenu: $showMenu,
-                onShowSettings: onShowSettings
-            )
+            ScreenHeaderBar(title: "쉐도잉", onOpenMenu: onOpenMenu)
 
             scrollContent
-        }
-        .sheet(isPresented: $showMenu) {
-            AppMenuView(selectedTab: $selectedTab, onShowSettings: onShowSettings)
         }
     }
 
@@ -479,5 +471,5 @@ private struct ShakeEffect: GeometryEffect {
 
 #Preview {
     @Previewable @State var selectedTab = RootTab.shadowing
-    ShadowingView(selectedTab: $selectedTab, onShowSettings: {})
+    ShadowingView(selectedTab: $selectedTab, onShowSettings: {}, onOpenMenu: {})
 }
