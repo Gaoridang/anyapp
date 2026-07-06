@@ -10,12 +10,15 @@ struct GrokSTTClient: SpeechTranscriptionClient {
 
     private let session: URLSession
     private let apiKeyProvider: @Sendable () -> String?
+    private let language: String
 
     init(
         session: URLSession = .shared,
+        language: String = "ko",
         apiKeyProvider: @escaping @Sendable () -> String? = { GrokAPIKeyStore.load() }
     ) {
         self.session = session
+        self.language = language
         self.apiKeyProvider = apiKeyProvider
     }
 
@@ -62,7 +65,7 @@ struct GrokSTTClient: SpeechTranscriptionClient {
         }
 
         appendField(name: "format", value: "true")
-        appendField(name: "language", value: languageCode(for: locale))
+        appendField(name: "language", value: resolvedLanguage(for: locale))
 
         let audioData = try Data(contentsOf: audioFileURL)
         body.append(Data("--\(boundary)\(lineBreak)".utf8))
@@ -74,6 +77,14 @@ struct GrokSTTClient: SpeechTranscriptionClient {
         body.append(audioData)
         body.append(Data("\(lineBreak)--\(boundary)--\(lineBreak)".utf8))
         return body
+    }
+
+    private func resolvedLanguage(for locale: Locale) -> String {
+        if locale.identifier == Locale(identifier: "ko-KR").identifier {
+            language
+        } else {
+            languageCode(for: locale)
+        }
     }
 
     private func languageCode(for locale: Locale) -> String {

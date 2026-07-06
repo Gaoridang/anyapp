@@ -9,11 +9,12 @@ import SwiftUI
 import SwiftData
 
 struct ContentView: View {
+    @Binding var selectedTab: RootTab
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Query(sort: \Item.timestamp, order: .reverse) private var items: [Item]
     @State private var selectedItemID: PersistentIdentifier?
     @State private var navigationPath = NavigationPath()
+    @State private var showMenu = false
     @State private var showAPIKeySettings = false
 
     var body: some View {
@@ -24,73 +25,113 @@ struct ContentView: View {
         }
     }
 
-    /// iPhone: single NavigationStack so ItemDetailView is never duplicated.
+    /// iPhone fallback when not hosted by RootPhoneShell.
     private var phoneNavigation: some View {
-        NavigationStack(path: $navigationPath) {
-            itemList
-                .navigationDestination(for: PersistentIdentifier.self) { id in
-                    if let item = modelContext.model(for: id) as? Item {
-                        ItemDetailView(item: item)
+        SideMenuDrawer(isPresented: $showMenu) {
+            NavigationStack(path: $navigationPath) {
+                itemList
+                    .navigationTitle("메모")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbarBackground(.automatic, for: .navigationBar)
+                    .toolbar {
+                        RootNavigationToolbar(
+                            showMenu: $showMenu,
+                            activeTab: .memo,
+                            onAddMemo: addItem
+                        )
                     }
-                }
+                    .navigationDestination(for: PersistentIdentifier.self) { id in
+                        if let item = modelContext.model(for: id) as? Item {
+                            ItemDetailView(item: item)
+                        }
+                    }
+            }
+            .sheet(isPresented: $showAPIKeySettings) {
+                APIKeySettingsView()
+            }
+        } menu: {
+            AppMenuView(
+                selectedTab: $selectedTab,
+                onShowSettings: {
+                    showMenu = false
+                    showAPIKeySettings = true
+                },
+                onClose: { showMenu = false }
+            )
         }
     }
 
     /// iPad: sidebar selection + detail column (no NavigationLink push in sidebar).
     private var tabletNavigation: some View {
-        NavigationSplitView {
-            itemList
-        } detail: {
-            if let selectedItemID,
-               let item = modelContext.model(for: selectedItemID) as? Item {
-                ItemDetailView(item: item)
-            } else {
-                ContentUnavailableView(
-                    "메모 없음",
-                    systemImage: "note.text",
-                    description: Text("왼쪽에서 메모를 선택하거나 +를 눌러 새 메모를 만드세요.")
-                )
+        SideMenuDrawer(isPresented: $showMenu) {
+            NavigationSplitView {
+                Group {
+                    switch selectedTab {
+                    case .memo:
+                        itemList
+                    case .shadowing:
+                        ShadowingView(onShowSettings: { showAPIKeySettings = true })
+                    case .speakingPractice:
+                        SpeakingPracticeView()
+                    }
+                }
+                .navigationTitle(selectedTab.title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.automatic, for: .navigationBar)
+                .toolbar {
+                    RootNavigationToolbar(
+                        showMenu: $showMenu,
+                        activeTab: selectedTab,
+                        onAddMemo: addItem
+                    )
+                }
+            } detail: {
+                if selectedTab == .memo {
+                    if let selectedItemID,
+                       let item = modelContext.model(for: selectedItemID) as? Item {
+                        ItemDetailView(item: item)
+                    } else {
+                        ContentUnavailableView(
+                            "메모 없음",
+                            systemImage: "note.text",
+                            description: Text("왼쪽에서 메모를 선택하거나 +를 눌러 새 메모를 만드세요.")
+                        )
+                    }
+                } else if selectedTab == .shadowing {
+                    ContentUnavailableView(
+                        "쉐도잉",
+                        systemImage: "text.bubble",
+                        description: Text("왼쪽에서 쉐도잉 연습을 시작하세요.")
+                    )
+                } else {
+                    ContentUnavailableView(
+                        "말하기 연습",
+                        systemImage: "mic.and.signal.meter",
+                        description: Text("왼쪽에서 말하기 연습을 시작하세요.")
+                    )
+                }
             }
+            .sheet(isPresented: $showAPIKeySettings) {
+                APIKeySettingsView()
+            }
+        } menu: {
+            AppMenuView(
+                selectedTab: $selectedTab,
+                onShowSettings: {
+                    showMenu = false
+                    showAPIKeySettings = true
+                },
+                onClose: { showMenu = false }
+            )
         }
     }
 
     private var itemList: some View {
-        List(selection: horizontalSizeClass == .compact ? nil : $selectedItemID) {
-            ForEach(items) { item in
-                if horizontalSizeClass == .compact {
-                    NavigationLink(value: item.persistentModelID) {
-                        ItemRowView(item: item)
-                    }
-                } else {
-                    ItemRowView(item: item)
-                        .tag(item.persistentModelID)
-                }
-            }
-            .onDelete(perform: deleteItems)
-        }
-        .navigationTitle("메모")
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button {
-                    showAPIKeySettings = true
-                } label: {
-                    Label("설정", systemImage: "key")
-                }
-                .accessibilityIdentifier("apiSettingsButton")
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                EditButton()
-            }
-            ToolbarItem {
-                Button(action: addItem) {
-                    Label("새 메모", systemImage: "plus")
-                }
-                .accessibilityIdentifier("addMemoButton")
-            }
-        }
-        .sheet(isPresented: $showAPIKeySettings) {
-            APIKeySettingsView()
-        }
+        MemoListView(
+            navigationPath: $navigationPath,
+            selectedItemID: $selectedItemID,
+            showsNavigationLinks: horizontalSizeClass == .compact
+        )
     }
 
     private func addItem() {
@@ -104,58 +145,9 @@ struct ContentView: View {
             }
         }
     }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                items[index].deleteAudioFile()
-                modelContext.delete(items[index])
-            }
-            if let selectedItemID,
-               !items.contains(where: { $0.persistentModelID == selectedItemID }) {
-                self.selectedItemID = nil
-            }
-            navigationPath = NavigationPath()
-        }
-    }
-}
-
-private struct ItemRowView: View {
-    let item: Item
-
-    var body: some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.timestamp, format: .dateTime.day().month().year().hour().minute())
-                    .font(.body)
-
-                if !item.textNote.isEmpty {
-                    Text(item.textNote)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-
-            Spacer(minLength: 0)
-
-            HStack(spacing: 6) {
-                if item.audioFileName != nil {
-                    Image(systemName: "waveform")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if !item.textNote.isEmpty {
-                    Image(systemName: "text.alignleft")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
 }
 
 #Preview {
-    ContentView()
+    ContentView(selectedTab: .constant(.memo))
         .modelContainer(for: Item.self, inMemory: true)
 }
