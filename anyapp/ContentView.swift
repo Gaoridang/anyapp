@@ -68,7 +68,10 @@ struct ContentView: View {
             }
             .onDelete(perform: deleteItems)
         }
-        .navigationTitle("메모")
+        .listStyle(.insetGrouped)
+        .contentMargins(.top, 8, for: .scrollContent)
+        .safeAreaPadding(.bottom)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button {

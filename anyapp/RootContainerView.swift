@@ -9,6 +9,8 @@ import SwiftData
 struct RootContainerView: View {
     @State private var selectedTab: RootTab = .memo
 
+    private let pageTransition = Animation.spring(response: 0.38, dampingFraction: 0.86)
+
     var body: some View {
         VStack(spacing: 0) {
             TopSegmentNavigator(selection: $selectedTab)
@@ -17,27 +19,41 @@ struct RootContainerView: View {
             // breaks the keyboard safe-area animation chain for ItemDetailView's
             // bottom input toolbar, so the bar and content jump instead of tracking
             // the keyboard.
-            ScrollView(.horizontal) {
-                HStack(spacing: 0) {
-                    ContentView()
-                        .containerRelativeFrame(.horizontal)
-                        .containerRelativeFrame(.vertical)
-                        .id(RootTab.memo)
+            GeometryReader { geometry in
+                ScrollView(.horizontal) {
+                    HStack(spacing: 0) {
+                        ContentView()
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .id(RootTab.memo)
+                            .rootPageTransition()
 
-                    ShadowingView()
-                        .containerRelativeFrame(.horizontal)
-                        .containerRelativeFrame(.vertical)
-                        .id(RootTab.shadowing)
+                        ShadowingView()
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .id(RootTab.shadowing)
+                            .rootPageTransition()
+                    }
+                    .scrollTargetLayout()
                 }
-                .scrollTargetLayout()
+                .scrollTargetBehavior(.paging)
+                .scrollIndicators(.hidden)
+                .scrollPosition(id: $selectedTab)
+                .scrollClipDisabled()
             }
-            .scrollTargetBehavior(.paging)
-            .scrollIndicators(.hidden)
-            .scrollPosition(id: $selectedTab)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .animation(pageTransition, value: selectedTab)
         .background(Color(.systemGroupedBackground))
         .accessibilityIdentifier("rootContainer")
+    }
+}
+
+private extension View {
+    func rootPageTransition() -> some View {
+        scrollTransition(.animated(.spring(response: 0.38, dampingFraction: 0.86))) { content, phase in
+            content
+                .opacity(phase.isIdentity ? 1 : 0.9)
+                .scaleEffect(phase.isIdentity ? 1 : 0.985)
+        }
     }
 }
 

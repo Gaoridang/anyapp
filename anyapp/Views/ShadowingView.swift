@@ -71,8 +71,10 @@ struct ShadowingView: View {
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 16)
         }
+        .safeAreaPadding(.bottom)
         .background(Color(.systemGroupedBackground))
         .task {
             await session.prepare()

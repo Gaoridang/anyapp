@@ -32,6 +32,6 @@ final class ShadowingUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["영어 쉐도잉"].waitForExistence(timeout: 3))
 
         app.buttons["memoTab"].tap()
-        XCTAssertTrue(app.navigationBars["메모"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["addMemoButton"].waitForExistence(timeout: 3))
     }
 }

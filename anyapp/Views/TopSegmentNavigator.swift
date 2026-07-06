@@ -38,7 +38,7 @@ struct TopSegmentNavigator: View {
         HStack(spacing: 8) {
             ForEach(RootTab.allCases) { tab in
                 Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
                         selection = tab
                     }
                 } label: {
