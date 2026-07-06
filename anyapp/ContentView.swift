@@ -14,6 +14,7 @@ struct ContentView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedItemID: PersistentIdentifier?
     @State private var navigationPath = NavigationPath()
+    @State private var showMenu = false
     @State private var showAPIKeySettings = false
 
     var body: some View {
@@ -26,72 +27,94 @@ struct ContentView: View {
 
     /// iPhone fallback when not hosted by RootPhoneShell.
     private var phoneNavigation: some View {
-        NavigationStack(path: $navigationPath) {
-            itemList
-                .toolbar(.hidden, for: .navigationBar)
-                .navigationDestination(for: AppMenuRoute.self) { _ in
-                    AppMenuView(
-                        selectedTab: $selectedTab,
-                        onShowSettings: { showAPIKeySettings = true }
-                    )
-                }
-                .navigationDestination(for: PersistentIdentifier.self) { id in
-                    if let item = modelContext.model(for: id) as? Item {
-                        ItemDetailView(item: item)
+        SideMenuDrawer(isPresented: $showMenu) {
+            NavigationStack(path: $navigationPath) {
+                itemList
+                    .navigationTitle("메모")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbarBackground(.automatic, for: .navigationBar)
+                    .toolbar {
+                        RootNavigationToolbar(
+                            showMenu: $showMenu,
+                            activeTab: .memo,
+                            onAddMemo: addItem
+                        )
                     }
-                }
-        }
-        .sheet(isPresented: $showAPIKeySettings) {
-            APIKeySettingsView()
+                    .navigationDestination(for: PersistentIdentifier.self) { id in
+                        if let item = modelContext.model(for: id) as? Item {
+                            ItemDetailView(item: item)
+                        }
+                    }
+            }
+            .sheet(isPresented: $showAPIKeySettings) {
+                APIKeySettingsView()
+            }
+        } menu: {
+            AppMenuView(
+                selectedTab: $selectedTab,
+                onShowSettings: {
+                    showMenu = false
+                    showAPIKeySettings = true
+                },
+                onClose: { showMenu = false }
+            )
         }
     }
 
     /// iPad: sidebar selection + detail column (no NavigationLink push in sidebar).
     private var tabletNavigation: some View {
-        NavigationSplitView {
-            NavigationStack(path: $navigationPath) {
+        SideMenuDrawer(isPresented: $showMenu) {
+            NavigationSplitView {
                 Group {
                     switch selectedTab {
                     case .memo:
                         itemList
                     case .shadowing:
-                        ShadowingView(
-                            selectedTab: $selectedTab,
-                            onShowSettings: { showAPIKeySettings = true },
-                            onOpenMenu: { navigationPath.append(AppMenuRoute.menu) }
-                        )
+                        ShadowingView(onShowSettings: { showAPIKeySettings = true })
                     }
                 }
-                .toolbar(.hidden, for: .navigationBar)
-                .navigationDestination(for: AppMenuRoute.self) { _ in
-                    AppMenuView(
-                        selectedTab: $selectedTab,
-                        onShowSettings: { showAPIKeySettings = true }
+                .navigationTitle(selectedTab.title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.automatic, for: .navigationBar)
+                .toolbar {
+                    RootNavigationToolbar(
+                        showMenu: $showMenu,
+                        activeTab: selectedTab,
+                        onAddMemo: addItem
                     )
                 }
-            }
-        } detail: {
-            if selectedTab == .memo {
-                if let selectedItemID,
-                   let item = modelContext.model(for: selectedItemID) as? Item {
-                    ItemDetailView(item: item)
+            } detail: {
+                if selectedTab == .memo {
+                    if let selectedItemID,
+                       let item = modelContext.model(for: selectedItemID) as? Item {
+                        ItemDetailView(item: item)
+                    } else {
+                        ContentUnavailableView(
+                            "메모 없음",
+                            systemImage: "note.text",
+                            description: Text("왼쪽에서 메모를 선택하거나 +를 눌러 새 메모를 만드세요.")
+                        )
+                    }
                 } else {
                     ContentUnavailableView(
-                        "메모 없음",
-                        systemImage: "note.text",
-                        description: Text("왼쪽에서 메모를 선택하거나 +를 눌러 새 메모를 만드세요.")
+                        "쉐도잉",
+                        systemImage: "text.bubble",
+                        description: Text("왼쪽에서 쉐도잉 연습을 시작하세요.")
                     )
                 }
-            } else {
-                ContentUnavailableView(
-                    "쉐도잉",
-                    systemImage: "text.bubble",
-                    description: Text("왼쪽에서 쉐도잉 연습을 시작하세요.")
-                )
             }
-        }
-        .sheet(isPresented: $showAPIKeySettings) {
-            APIKeySettingsView()
+            .sheet(isPresented: $showAPIKeySettings) {
+                APIKeySettingsView()
+            }
+        } menu: {
+            AppMenuView(
+                selectedTab: $selectedTab,
+                onShowSettings: {
+                    showMenu = false
+                    showAPIKeySettings = true
+                },
+                onClose: { showMenu = false }
+            )
         }
     }
 
@@ -99,8 +122,7 @@ struct ContentView: View {
         MemoListView(
             navigationPath: $navigationPath,
             selectedItemID: $selectedItemID,
-            showsNavigationLinks: horizontalSizeClass == .compact,
-            onAddMemo: addItem
+            showsNavigationLinks: horizontalSizeClass == .compact
         )
     }
 
