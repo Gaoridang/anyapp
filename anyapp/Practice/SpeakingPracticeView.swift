@@ -17,29 +17,25 @@ struct SpeakingPracticeView: View {
     private static let recordingUITransitionDelay: Duration = .milliseconds(120)
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                PracticeStepIndicator(step: session.step)
+        VStack(spacing: 0) {
+            PracticeStepIndicator(step: session.step)
 
-                stepContent
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            stepContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(Color(.systemGroupedBackground))
+        .overlay(alignment: .bottom) {
+            if let errorMessage = session.errorMessage {
+                Text(errorMessage)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding()
+                    .padding(.bottom, 12)
             }
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("말하기 연습")
-            .navigationBarTitleDisplayMode(.inline)
-            .overlay(alignment: .bottom) {
-                if let errorMessage = session.errorMessage {
-                    Text(errorMessage)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding()
-                        .padding(.bottom, 12)
-                }
-            }
-            .task {
-                await recorder.prepare()
-            }
+        }
+        .task {
+            await recorder.prepare()
         }
     }
 
@@ -99,16 +95,16 @@ struct SpeakingPracticeView: View {
             AnalysisProgressView(phase: session.analysisPhase)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if case .failed(let message) = session.analysisPhase {
-            ContentUnavailableView(
-                "비교에 실패했어요",
-                systemImage: "exclamationmark.triangle",
-                description: Text(message)
-            )
-            .toolbar {
-                ToolbarItem(placement: .bottomBar) {
-                    Button("처음부터 다시", action: session.resetAll)
-                }
+            VStack(spacing: 16) {
+                ContentUnavailableView(
+                    "비교에 실패했어요",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(message)
+                )
+                Button("처음부터 다시", action: session.resetAll)
+                    .buttonStyle(.borderedProminent)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let result = session.comparisonResult {
             ComparisonResultView(
                 result: result,

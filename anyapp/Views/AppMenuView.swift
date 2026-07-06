@@ -8,53 +8,47 @@ import SwiftUI
 struct AppMenuView: View {
     @Binding var selectedTab: RootTab
     var onShowSettings: () -> Void
-    var onClose: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("메뉴")
-                .font(.largeTitle.bold())
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
-                .padding(.bottom, 8)
-
-            List {
-                Section("기능") {
-                    ForEach(RootTab.allCases) { tab in
-                        Button {
+        List {
+            Section("기능") {
+                ForEach(RootTab.contentTabs) { tab in
+                    Button {
+                        withAnimation(.smooth(duration: 0.35)) {
                             selectedTab = tab
-                            onClose()
-                        } label: {
-                            HStack {
-                                Label(tab.title, systemImage: tab.menuIcon)
-                                Spacer()
-                                if selectedTab == tab {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(.secondary)
-                                }
+                        }
+                    } label: {
+                        HStack {
+                            Label(tab.title, systemImage: tab.menuIcon)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if selectedTab == tab {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(.secondary)
                             }
                         }
-                        .accessibilityIdentifier(tab.accessibilityIdentifier)
                     }
-
-                    ForEach(AppMenuPlaceholder.allCases) { placeholder in
-                        Label(placeholder.title, systemImage: placeholder.icon)
-                            .foregroundStyle(.tertiary)
-                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier(tab.accessibilityIdentifier)
                 }
 
-                Section {
-                    Button {
-                        onClose()
-                        onShowSettings()
-                    } label: {
-                        Label("Grok API 키", systemImage: "key")
-                    }
-                    .accessibilityIdentifier("apiSettingsButton")
+                ForEach(AppMenuPlaceholder.allCases) { placeholder in
+                    Label(placeholder.title, systemImage: placeholder.icon)
+                        .foregroundStyle(.tertiary)
                 }
             }
-            .listStyle(.insetGrouped)
+
+            Section {
+                Button(action: onShowSettings) {
+                    Label("Grok API 키", systemImage: "key")
+                        .foregroundStyle(.primary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("apiSettingsButton")
+            }
         }
+        .listStyle(.insetGrouped)
+        .tint(.primary)
         .accessibilityIdentifier("appMenuView")
     }
 }
@@ -70,5 +64,5 @@ private enum AppMenuPlaceholder: String, CaseIterable, Identifiable {
 }
 
 #Preview {
-    AppMenuView(selectedTab: .constant(.memo), onShowSettings: {}, onClose: {})
+    AppMenuView(selectedTab: .constant(.memo), onShowSettings: {})
 }
