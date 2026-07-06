@@ -6,12 +6,18 @@
 import SwiftUI
 
 struct ShadowingView: View {
+    @Binding var selectedTab: RootTab
+    var onShowSettings: () -> Void
+
     @State private var session = ShadowingSessionModel()
-    @State private var showAPIKeySettings = false
     @State private var shakeVerification = false
 
     var body: some View {
-        scrollContent
+        VStack(spacing: 0) {
+            ScreenHeaderBar(title: "쉐도잉", selectedTab: $selectedTab, onShowSettings: onShowSettings)
+
+            scrollContent
+        }
     }
 
     private var scrollContent: some View {
@@ -84,9 +90,6 @@ struct ShadowingView: View {
             await session.prepare()
         }
         .onDisappear(perform: session.teardown)
-        .sheet(isPresented: $showAPIKeySettings) {
-            APIKeySettingsView()
-        }
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: session.activeStep)
         .animation(.easeInOut(duration: 0.25), value: session.phase)
         .animation(.easeInOut(duration: 0.25), value: session.showsRecordingUI)
@@ -111,15 +114,11 @@ struct ShadowingView: View {
     }
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("영어 쉐도잉")
-                .font(.title2.weight(.bold))
-            Text("한국어로 말하고, 영어로 따라 말한 뒤 번역이 맞는지 확인해 보세요.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.bottom, 4)
+        Text("한국어로 말하고, 영어로 따라 말한 뒤 번역이 맞는지 확인해 보세요.")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 4)
     }
 
     @ViewBuilder
@@ -181,7 +180,7 @@ struct ShadowingView: View {
 
                     if message.contains("API 키") {
                         Button("설정") {
-                            showAPIKeySettings = true
+                            onShowSettings()
                         }
                         .font(.caption.weight(.semibold))
                     } else if session.koreanText != nil, session.englishText != nil {
@@ -470,5 +469,6 @@ private struct ShakeEffect: GeometryEffect {
 }
 
 #Preview {
-    ShadowingView()
+    @Previewable @State var selectedTab = RootTab.shadowing
+    ShadowingView(selectedTab: $selectedTab, onShowSettings: {})
 }

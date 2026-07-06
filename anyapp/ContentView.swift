@@ -28,29 +28,54 @@ struct ContentView: View {
     private var phoneNavigation: some View {
         NavigationStack(path: $navigationPath) {
             itemList
+                .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(for: PersistentIdentifier.self) { id in
                     if let item = modelContext.model(for: id) as? Item {
                         ItemDetailView(item: item)
                     }
                 }
         }
+        .sheet(isPresented: $showAPIKeySettings) {
+            APIKeySettingsView()
+        }
     }
 
     /// iPad: sidebar selection + detail column (no NavigationLink push in sidebar).
     private var tabletNavigation: some View {
         NavigationSplitView {
-            itemList
+            Group {
+                switch selectedTab {
+                case .memo:
+                    itemList
+                case .shadowing:
+                    ShadowingView(
+                        selectedTab: $selectedTab,
+                        onShowSettings: { showAPIKeySettings = true }
+                    )
+                }
+            }
         } detail: {
-            if let selectedItemID,
-               let item = modelContext.model(for: selectedItemID) as? Item {
-                ItemDetailView(item: item)
+            if selectedTab == .memo {
+                if let selectedItemID,
+                   let item = modelContext.model(for: selectedItemID) as? Item {
+                    ItemDetailView(item: item)
+                } else {
+                    ContentUnavailableView(
+                        "메모 없음",
+                        systemImage: "note.text",
+                        description: Text("왼쪽에서 메모를 선택하거나 +를 눌러 새 메모를 만드세요.")
+                    )
+                }
             } else {
                 ContentUnavailableView(
-                    "메모 없음",
-                    systemImage: "note.text",
-                    description: Text("왼쪽에서 메모를 선택하거나 +를 눌러 새 메모를 만드세요.")
+                    "쉐도잉",
+                    systemImage: "text.bubble",
+                    description: Text("왼쪽에서 쉐도잉 연습을 시작하세요.")
                 )
             }
+        }
+        .sheet(isPresented: $showAPIKeySettings) {
+            APIKeySettingsView()
         }
     }
 
@@ -58,35 +83,11 @@ struct ContentView: View {
         MemoListView(
             navigationPath: $navigationPath,
             selectedItemID: $selectedItemID,
-            showsNavigationLinks: horizontalSizeClass == .compact
+            selectedTab: $selectedTab,
+            showsNavigationLinks: horizontalSizeClass == .compact,
+            onShowSettings: { showAPIKeySettings = true },
+            onAddMemo: addItem
         )
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.automatic, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                TopSegmentNavigator(selection: $selectedTab, style: .navigationBar)
-            }
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button {
-                    showAPIKeySettings = true
-                } label: {
-                    Label("설정", systemImage: "key")
-                }
-                .accessibilityIdentifier("apiSettingsButton")
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                EditButton()
-            }
-            ToolbarItem {
-                Button(action: addItem) {
-                    Label("새 메모", systemImage: "plus")
-                }
-                .accessibilityIdentifier("addMemoButton")
-            }
-        }
-        .sheet(isPresented: $showAPIKeySettings) {
-            APIKeySettingsView()
-        }
     }
 
     private func addItem() {

@@ -12,25 +12,38 @@ struct MemoListView: View {
 
     @Binding var navigationPath: NavigationPath
     @Binding var selectedItemID: PersistentIdentifier?
+    @Binding var selectedTab: RootTab
     var showsNavigationLinks: Bool
+    var onShowSettings: () -> Void
+    var onAddMemo: () -> Void
 
     var body: some View {
-        List(selection: showsNavigationLinks ? nil : $selectedItemID) {
-            ForEach(items) { item in
-                if showsNavigationLinks {
-                    NavigationLink(value: item.persistentModelID) {
-                        ItemRowView(item: item)
-                    }
-                } else {
-                    ItemRowView(item: item)
-                        .tag(item.persistentModelID)
+        VStack(spacing: 0) {
+            ScreenHeaderBar(title: "메모", selectedTab: $selectedTab, onShowSettings: onShowSettings) {
+                EditButton()
+                Button(action: onAddMemo) {
+                    Label("새 메모", systemImage: "plus")
                 }
+                .accessibilityIdentifier("addMemoButton")
             }
-            .onDelete(perform: deleteItems)
+
+            List(selection: showsNavigationLinks ? nil : $selectedItemID) {
+                ForEach(items) { item in
+                    if showsNavigationLinks {
+                        NavigationLink(value: item.persistentModelID) {
+                            ItemRowView(item: item)
+                        }
+                    } else {
+                        ItemRowView(item: item)
+                            .tag(item.persistentModelID)
+                    }
+                }
+                .onDelete(perform: deleteItems)
+            }
+            .listStyle(.insetGrouped)
+            .contentMargins(.top, 8, for: .scrollContent)
+            .safeAreaPadding(.bottom)
         }
-        .listStyle(.insetGrouped)
-        .contentMargins(.top, 8, for: .scrollContent)
-        .safeAreaPadding(.bottom)
     }
 
     private func deleteItems(offsets: IndexSet) {
@@ -88,7 +101,10 @@ struct ItemRowView: View {
         MemoListView(
             navigationPath: .constant(NavigationPath()),
             selectedItemID: .constant(nil),
-            showsNavigationLinks: true
+            selectedTab: .constant(.memo),
+            showsNavigationLinks: true,
+            onShowSettings: {},
+            onAddMemo: {}
         )
     }
     .modelContainer(for: Item.self, inMemory: true)

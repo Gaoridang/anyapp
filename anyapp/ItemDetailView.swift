@@ -18,6 +18,7 @@ struct ItemDetailView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dismiss) private var dismiss
     @Bindable var item: Item
     @State private var recorder = AudioRecorder()
 
@@ -64,6 +65,8 @@ struct ItemDetailView: View {
         // Saved note and playback live in the ScrollView above the input bar; when the
         // keyboard shrinks that area, inner Spacers compress and the block moves up together.
         VStack(spacing: 0) {
+            detailHeader
+
             GeometryReader { geometry in
                 ScrollView {
                     VStack(spacing: 16) {
@@ -94,8 +97,7 @@ struct ItemDetailView: View {
             bottomHint
                 .onTapGesture(perform: dismissKeyboard)
         }
-        .navigationTitle(item.timestamp.formatted(.dateTime.day().month().year().hour().minute()))
-        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
         .overlay(alignment: .top) { topBanner }
         .animation(.easeInOut(duration: 0.2), value: showSaveConfirmation)
         .animation(.easeInOut(duration: 0.2), value: recordingErrorMessage)
@@ -132,6 +134,29 @@ struct ItemDetailView: View {
     }
 
     // MARK: - Subviews
+
+    private var detailHeader: some View {
+        HStack(spacing: 8) {
+            Button(action: dismiss.callAsFunction) {
+                Image(systemName: "chevron.backward")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("뒤로")
+
+            Text(item.timestamp.formatted(.dateTime.day().month().year().hour().minute()))
+                .font(.title3.weight(.semibold))
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 4)
+        .padding(.trailing, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
+    }
 
     @ViewBuilder
     private var contentStatusSection: some View {
