@@ -32,7 +32,7 @@ struct GrokTranslationVerifierTests {
     }
 
     @Test func verifySuccessUsesChatCompletions() async throws {
-        MockURLProtocol.requestHandler = { request in
+        try await MockURLProtocol.withRequestHandler { request in
             #expect(request.httpMethod == "POST")
             #expect(request.url?.absoluteString == "https://api.x.ai/v1/chat/completions")
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-key")
@@ -53,16 +53,16 @@ struct GrokTranslationVerifierTests {
             {"choices":[{"message":{"content":"{\\"isCorrect\\":true,\\"score\\":95,\\"feedback\\":\\"좋아요\\",\\"suggestedTranslation\\":null}"}}]}
             """
             return (response, Data(payload.utf8))
+        } perform: {
+            let verifier = GrokTranslationVerifier(
+                session: makeSession(),
+                apiKeyProvider: { "test-key" }
+            )
+
+            let verdict = try await verifier.verify(korean: "오늘 날씨가 좋아요", english: "The weather is nice today")
+            #expect(verdict.isCorrect)
+            #expect(verdict.score == 95)
         }
-
-        let verifier = GrokTranslationVerifier(
-            session: makeSession(),
-            apiKeyProvider: { "test-key" }
-        )
-
-        let verdict = try await verifier.verify(korean: "오늘 날씨가 좋아요", english: "The weather is nice today")
-        #expect(verdict.isCorrect)
-        #expect(verdict.score == 95)
     }
 
     @Test func verifyMissingAPIKeyThrows() async {
