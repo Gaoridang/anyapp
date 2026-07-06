@@ -6,22 +6,12 @@
 import SwiftUI
 
 struct ShadowingView: View {
-    @Binding var selectedTab: RootTab
     @State private var session = ShadowingSessionModel()
     @State private var showAPIKeySettings = false
     @State private var shakeVerification = false
 
     var body: some View {
-        NavigationStack {
-            scrollContent
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(.automatic, for: .navigationBar)
-                .toolbar {
-                    ToolbarItem(placement: .principal) {
-                        TopSegmentNavigator(selection: $selectedTab, style: .navigationBar)
-                    }
-                }
-        }
+        scrollContent
     }
 
     private var scrollContent: some View {
@@ -85,7 +75,7 @@ struct ShadowingView: View {
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.top, 16)
+            .padding(.top, 8)
             .padding(.bottom, 16)
         }
         .safeAreaPadding(.bottom)
@@ -480,5 +470,5 @@ private struct ShakeEffect: GeometryEffect {
 }
 
 #Preview {
-    ShadowingView(selectedTab: .constant(.shadowing))
+    ShadowingView()
 }

@@ -68,6 +68,7 @@ struct TopSegmentNavigator: View {
         }
         .padding(style == .navigationBar ? 3 : 4)
         .background(Color(.tertiarySystemFill), in: Capsule())
+        .frame(maxWidth: style == .navigationBar ? 220 : nil)
         .padding(.horizontal, style == .standalone ? 20 : 0)
         .padding(.top, style == .standalone ? 8 : 0)
         .padding(.bottom, style == .standalone ? 6 : 0)
@@ -79,7 +80,7 @@ struct TopSegmentNavigator: View {
         case .standalone:
             .subheadline.weight(isSelected ? .semibold : .medium)
         case .navigationBar:
-            .caption.weight(isSelected ? .semibold : .medium)
+            .subheadline.weight(isSelected ? .semibold : .medium)
         }
     }
 }

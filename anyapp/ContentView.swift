@@ -12,7 +12,6 @@ struct ContentView: View {
     @Binding var selectedTab: RootTab
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Query(sort: \Item.timestamp, order: .reverse) private var items: [Item]
     @State private var selectedItemID: PersistentIdentifier?
     @State private var navigationPath = NavigationPath()
     @State private var showAPIKeySettings = false
@@ -25,7 +24,7 @@ struct ContentView: View {
         }
     }
 
-    /// iPhone: single NavigationStack so ItemDetailView is never duplicated.
+    /// iPhone fallback when not hosted by RootPhoneShell.
     private var phoneNavigation: some View {
         NavigationStack(path: $navigationPath) {
             itemList
@@ -56,22 +55,11 @@ struct ContentView: View {
     }
 
     private var itemList: some View {
-        List(selection: horizontalSizeClass == .compact ? nil : $selectedItemID) {
-            ForEach(items) { item in
-                if horizontalSizeClass == .compact {
-                    NavigationLink(value: item.persistentModelID) {
-                        ItemRowView(item: item)
-                    }
-                } else {
-                    ItemRowView(item: item)
-                        .tag(item.persistentModelID)
-                }
-            }
-            .onDelete(perform: deleteItems)
-        }
-        .listStyle(.insetGrouped)
-        .contentMargins(.top, 8, for: .scrollContent)
-        .safeAreaPadding(.bottom)
+        MemoListView(
+            navigationPath: $navigationPath,
+            selectedItemID: $selectedItemID,
+            showsNavigationLinks: horizontalSizeClass == .compact
+        )
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.automatic, for: .navigationBar)
         .toolbar {
@@ -109,55 +97,6 @@ struct ContentView: View {
             selectedItemID = newItem.persistentModelID
             if horizontalSizeClass == .compact {
                 navigationPath.append(newItem.persistentModelID)
-            }
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                items[index].deleteAudioFile()
-                modelContext.delete(items[index])
-            }
-            if let selectedItemID,
-               !items.contains(where: { $0.persistentModelID == selectedItemID }) {
-                self.selectedItemID = nil
-            }
-            navigationPath = NavigationPath()
-        }
-    }
-}
-
-private struct ItemRowView: View {
-    let item: Item
-
-    var body: some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.timestamp, format: .dateTime.day().month().year().hour().minute())
-                    .font(.body)
-
-                if !item.textNote.isEmpty {
-                    Text(item.textNote)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-
-            Spacer(minLength: 0)
-
-            HStack(spacing: 6) {
-                if item.audioFileName != nil {
-                    Image(systemName: "waveform")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if !item.textNote.isEmpty {
-                    Image(systemName: "text.alignleft")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
         }
     }
