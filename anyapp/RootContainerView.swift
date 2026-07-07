@@ -5,6 +5,7 @@
 
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct RootContainerView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -13,7 +14,7 @@ struct RootContainerView: View {
     var body: some View {
         Group {
             if horizontalSizeClass == .compact {
-                RootPhoneShell(selectedTab: $selectedTab)
+                RootPhoneShell()
             } else {
                 ContentView(selectedTab: $selectedTab)
             }
@@ -23,29 +24,49 @@ struct RootContainerView: View {
     }
 }
 
-/// iPhone root: Grok-style horizontal pager — Menu ← Memo → Shadowing → Practice.
-/// Each page uses a native NavigationStack header that slides with the page.
+/// iPhone root: horizontal pager with a single shared NavigationStack header.
 private struct RootPhoneShell: View {
-    @Binding var selectedTab: RootTab
     @Environment(\.modelContext) private var modelContext
 
+    @State private var selectedTab: RootTab = .memo
+    @State private var pagerProgress: CGFloat = 0
     @State private var navigationPath = NavigationPath()
     @State private var selectedItemID: PersistentIdentifier?
     @State private var showAPIKeySettings = false
     @State private var hapticsReady = false
 
     var body: some View {
-        tabPager
-            .sheet(isPresented: $showAPIKeySettings) {
-                APIKeySettingsView()
-            }
-            .onChange(of: selectedTab) { oldTab, newTab in
-                guard hapticsReady, oldTab != newTab else { return }
-                RootPagerHaptics.pageChanged()
-            }
-            .onAppear {
-                hapticsReady = true
-            }
+        NavigationStack(path: $navigationPath) {
+            tabPager
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.automatic, for: .navigationBar)
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        RootPagerTitle(progress: pagerProgress)
+                    }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        settingsButton
+                    }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        memoToolbarButtons
+                    }
+                }
+                .navigationDestination(for: PersistentIdentifier.self) { id in
+                    if let item = modelContext.model(for: id) as? Item {
+                        ItemDetailView(item: item)
+                    }
+                }
+        }
+        .sheet(isPresented: $showAPIKeySettings) {
+            APIKeySettingsView()
+        }
+        .onChange(of: selectedTab) { oldTab, newTab in
+            guard hapticsReady, oldTab != newTab else { return }
+            RootPagerHaptics.pageChanged()
+        }
+        .onAppear {
+            hapticsReady = true
+        }
     }
 
     private var pagerTabPosition: Binding<RootTab?> {
@@ -62,32 +83,19 @@ private struct RootPhoneShell: View {
     private var tabPager: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 0) {
-                RootMenuPage(
-                    selectedTab: $selectedTab,
-                    onShowSettings: { showAPIKeySettings = true }
-                )
-                .containerRelativeFrame(.horizontal)
-                .id(RootTab.menu)
-
-                RootMemoPage(
-                    selectedTab: $selectedTab,
+                MemoListView(
                     navigationPath: $navigationPath,
                     selectedItemID: $selectedItemID,
-                    onAddMemo: addMemo
+                    showsNavigationLinks: true
                 )
+                .rootPageScrollTransition()
                 .containerRelativeFrame(.horizontal)
                 .id(RootTab.memo)
 
-                RootShadowingPage(
-                    selectedTab: $selectedTab,
-                    onShowSettings: { showAPIKeySettings = true }
-                )
-                .containerRelativeFrame(.horizontal)
-                .id(RootTab.shadowing)
-
-                RootSpeakingPracticePage(selectedTab: $selectedTab)
+                ShadowingView(onShowSettings: { showAPIKeySettings = true })
+                    .rootPageScrollTransition()
                     .containerRelativeFrame(.horizontal)
-                    .id(RootTab.speakingPractice)
+                    .id(RootTab.shadowing)
             }
             .scrollTargetLayout()
         }
@@ -96,6 +104,34 @@ private struct RootPhoneShell: View {
         .scrollPosition(id: pagerTabPosition)
         .scrollDisabled(!navigationPath.isEmpty)
         .scrollClipDisabled()
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            let pageWidth = geometry.containerSize.width
+            guard pageWidth > 0 else { return 0 }
+            return min(max(geometry.contentOffset.x / pageWidth, 0), 1)
+        } action: { _, progress in
+            pagerProgress = progress
+        }
+    }
+
+    private var settingsButton: some View {
+        Button {
+            showAPIKeySettings = true
+        } label: {
+            Label("Grok API 키", systemImage: "key")
+        }
+        .accessibilityIdentifier("apiSettingsButton")
+    }
+
+    private var memoToolbarButtons: some View {
+        HStack(spacing: 16) {
+            EditButton()
+            Button(action: addMemo) {
+                Label("새 메모", systemImage: "plus")
+            }
+            .accessibilityIdentifier("addMemoButton")
+        }
+        .opacity(1 - pagerProgress)
+        .allowsHitTesting(pagerProgress < 0.5)
     }
 
     func addMemo() {
@@ -106,6 +142,43 @@ private struct RootPhoneShell: View {
             selectedItemID = newItem.persistentModelID
             navigationPath.append(newItem.persistentModelID)
         }
+    }
+}
+
+struct RootPagerTitle: View {
+    let progress: CGFloat
+
+    var body: some View {
+        ZStack {
+            Text(RootTab.memo.title)
+                .opacity(1 - progress)
+            Text(RootTab.shadowing.title)
+                .opacity(progress)
+        }
+        .font(.headline)
+        .animation(nil, value: progress)
+    }
+}
+
+enum RootPagerHaptics {
+    static func pageChanged() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+}
+
+private struct RootPageScrollTransitionModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .scrollTransition(.interactive, axis: .horizontal) { view, phase in
+                view
+                    .opacity(phase.isIdentity ? 1 : 1 - min(abs(phase.value), 1) * 0.12)
+            }
+    }
+}
+
+extension View {
+    func rootPageScrollTransition() -> some View {
+        modifier(RootPageScrollTransitionModifier())
     }
 }
 
