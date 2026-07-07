@@ -33,6 +33,7 @@ private struct RootPhoneShell: View {
     @State private var navigationPath = NavigationPath()
     @State private var selectedItemID: PersistentIdentifier?
     @State private var showAPIKeySettings = false
+    @State private var shadowingSession = ShadowingSessionModel()
     @State private var hapticsReady = false
 
     var body: some View {
@@ -48,17 +49,27 @@ private struct RootPhoneShell: View {
                     ToolbarItem(placement: .topBarLeading) {
                         settingsButton
                     }
-                    ToolbarItemGroup(placement: .topBarTrailing) {
-                        Group {
-                            EditButton()
-                            Button(action: addMemo) {
-                                Label("새 메모", systemImage: "plus")
-                            }
-                            .accessibilityIdentifier("addMemoButton")
-                        }
-                        .opacity(1 - pagerProgress)
-                        .allowsHitTesting(pagerProgress < 0.5)
+                    ToolbarItem(placement: .principal) {
+                        RootPagerTitle(progress: pagerProgress)
                     }
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        EditButton()
+                        Button(action: addMemo) {
+                            Label("새 메모", systemImage: "plus")
+                        }
+                        .accessibilityIdentifier("addMemoButton")
+                    }
+                    .opacity(1 - pagerProgress)
+                    .allowsHitTesting(pagerProgress < 0.5)
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        Button(action: shadowingSession.resetSession) {
+                            Label("다시 하기", systemImage: "arrow.counterclockwise")
+                        }
+                        .disabled(!shadowingSession.canReset)
+                        .accessibilityIdentifier("resetShadowingButton")
+                    }
+                    .opacity(pagerProgress)
+                    .allowsHitTesting(pagerProgress > 0.5)
                 }
                 .navigationDestination(for: PersistentIdentifier.self) { id in
                     if let item = modelContext.model(for: id) as? Item {
@@ -101,7 +112,10 @@ private struct RootPhoneShell: View {
                 .containerRelativeFrame(.horizontal)
                 .id(RootTab.memo)
 
-                ShadowingView(onShowSettings: { showAPIKeySettings = true })
+                ShadowingView(
+                    session: shadowingSession,
+                    onShowSettings: { showAPIKeySettings = true }
+                )
                     .rootPageScrollTransition()
                     .containerRelativeFrame(.horizontal)
                     .id(RootTab.shadowing)
@@ -126,7 +140,7 @@ private struct RootPhoneShell: View {
         Button {
             showAPIKeySettings = true
         } label: {
-            Label("Grok API 키", systemImage: "key")
+            Label("설정", systemImage: "gearshape")
         }
         .accessibilityIdentifier("apiSettingsButton")
     }
@@ -139,6 +153,21 @@ private struct RootPhoneShell: View {
             selectedItemID = newItem.persistentModelID
             navigationPath.append(newItem.persistentModelID)
         }
+    }
+}
+
+struct RootPagerTitle: View {
+    let progress: CGFloat
+
+    var body: some View {
+        ZStack {
+            Text(RootTab.memo.title)
+                .opacity(1 - progress)
+            Text(RootTab.shadowing.title)
+                .opacity(progress)
+        }
+        .font(.headline)
+        .animation(nil, value: progress)
     }
 }
 

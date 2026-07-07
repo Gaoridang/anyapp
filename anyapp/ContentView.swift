@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var selectedItemID: PersistentIdentifier?
     @State private var navigationPath = NavigationPath()
     @State private var showAPIKeySettings = false
+    @State private var shadowingSession = ShadowingSessionModel()
 
     var body: some View {
         NavigationSplitView {
@@ -50,7 +51,7 @@ struct ContentView: View {
                 Button {
                     showAPIKeySettings = true
                 } label: {
-                    Label("Grok API 키", systemImage: "key")
+                    Label("설정", systemImage: "gearshape")
                 }
                 .accessibilityIdentifier("apiSettingsButton")
             }
@@ -84,7 +85,23 @@ struct ContentView: View {
                     }
             }
         case .shadowing:
-            ShadowingView(onShowSettings: { showAPIKeySettings = true })
+            NavigationStack {
+                ShadowingView(
+                    session: shadowingSession,
+                    onShowSettings: { showAPIKeySettings = true }
+                )
+                .navigationTitle("쉐도잉")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(action: shadowingSession.resetSession) {
+                            Label("다시 하기", systemImage: "arrow.counterclockwise")
+                        }
+                        .disabled(!shadowingSession.canReset)
+                        .accessibilityIdentifier("resetShadowingButton")
+                    }
+                }
+            }
         }
     }
 

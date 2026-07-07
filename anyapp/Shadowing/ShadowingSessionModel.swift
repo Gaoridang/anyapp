@@ -87,6 +87,15 @@ final class ShadowingSessionModel {
         }
     }
 
+    var canReset: Bool {
+        koreanText != nil
+            || englishText != nil
+            || verdict != nil
+            || isRecording
+            || showsRecordingUI
+            || isBusy
+    }
+
     var statusMessage: String? {
         switch phase {
         case .idle:
