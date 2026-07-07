@@ -30,7 +30,6 @@ private struct RootPhoneShell: View {
 
     @State private var selectedTab: RootTab = .memo
     @State private var pagerProgress: CGFloat = 0
-    @State private var pagerPosition = ScrollPosition()
     @State private var navigationPath = NavigationPath()
     @State private var selectedItemID: PersistentIdentifier?
     @State private var showAPIKeySettings = false
@@ -94,6 +93,17 @@ private struct RootPhoneShell: View {
         }
     }
 
+    private var pagerTabPosition: Binding<RootTab?> {
+        Binding(
+            get: { selectedTab },
+            set: { newValue in
+                if let newValue {
+                    selectedTab = newValue
+                }
+            }
+        )
+    }
+
     private var tabPager: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 0) {
@@ -115,15 +125,19 @@ private struct RootPhoneShell: View {
                     .id(RootTab.shadowing)
             }
             .scrollTargetLayout()
-            // Turns off UIScrollView rubber-banding so the first/last page
-            // cannot be pulled past the edge (SwiftUI has no bounce-off API).
-            .background(PagerBounceDisabler())
+            // Hooks the underlying UIScrollView so we can kill UIKit paging
+            // deceleration and run our own cubic-bezier snap instead.
+            .background(PagerScrollController(
+                pageCount: RootTab.allCases.count,
+                currentPage: { selectedTab.rawValue }
+            ) { pageIndex in
+                if let tab = RootTab(rawValue: pageIndex) {
+                    selectedTab = tab
+                }
+            })
         }
-        // Kept as a safety net: if the custom snap below ever fails to take
-        // over, the system still lands on a page boundary.
-        .scrollTargetBehavior(.paging)
         .scrollIndicators(.hidden)
-        .scrollPosition($pagerPosition)
+        .scrollPosition(id: pagerTabPosition)
         .scrollDisabled(!navigationPath.isEmpty)
         .scrollClipDisabled()
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
@@ -132,32 +146,6 @@ private struct RootPhoneShell: View {
             return min(max(geometry.contentOffset.x / pageWidth, 0), 1)
         } action: { _, progress in
             pagerProgress = progress
-        }
-        .onScrollPhaseChange { oldPhase, newPhase, context in
-            // The moment the finger lifts, replace the velocity-dependent
-            // system deceleration with a fixed-duration ease-in-out snap.
-            // (`tracking` never scrolled, so a plain tap stays a no-op.)
-            guard oldPhase == .interacting,
-                  newPhase == .decelerating || newPhase == .idle else { return }
-            snapToPage(geometry: context.geometry, velocity: context.velocity)
-        }
-    }
-
-    private func snapToPage(geometry: ScrollGeometry, velocity: CGVector?) {
-        let pageWidth = geometry.containerSize.width
-        guard pageWidth > 0 else { return }
-
-        let targetIndex = RootPagerMotion.targetPageIndex(
-            progress: geometry.contentOffset.x / pageWidth,
-            velocity: velocity?.dx ?? 0,
-            pageCount: RootTab.allCases.count
-        )
-
-        withAnimation(RootPagerMotion.snap) {
-            pagerPosition.scrollTo(x: CGFloat(targetIndex) * pageWidth)
-        }
-        if let tab = RootTab(rawValue: targetIndex) {
-            selectedTab = tab
         }
     }
 
@@ -203,53 +191,185 @@ enum RootPagerHaptics {
 }
 
 enum RootPagerMotion {
-    /// cubic-bezier(0.22, 1, 0.36, 1) — ease-out (deceleration): the page keeps
-    /// most of the finger's momentum at release, then slows from the midpoint
-    /// and glides smoothly into place at the end. Not symmetric ease-in-out.
-    static let snap: Animation = .timingCurve(0.22, 1.0, 0.36, 1.0, duration: 0.45)
+    /// cubic-bezier(0.22, 1, 0.36, 1) — ease-out: fast at release, smooth landing.
+    static let snapDuration: TimeInterval = 0.45
+    static let snapControlPoint1 = CGPoint(x: 0.22, y: 1.0)
+    static let snapControlPoint2 = CGPoint(x: 0.36, y: 1.0)
 
-    /// Content-offset velocity (pt/s) above which a release counts as a flick
-    /// toward the next page even if the drag covered less than half the width.
-    static let flickVelocityThreshold: CGFloat = 120
+    /// Drag past 20% of a page width (default UIKit paging is ~50%) to turn.
+    static let progressTurnThreshold: CGFloat = 0.20
 
-    /// Picks the page to snap to when the finger lifts. Velocity only decides
-    /// the target page; the snap animation itself never depends on it.
-    /// - Parameters:
-    ///   - progress: content offset divided by page width (0 = first page).
-    ///   - velocity: content-offset velocity in pt/s (positive = toward last page).
-    ///   - pageCount: total number of pages.
-    static func targetPageIndex(progress: CGFloat, velocity: CGFloat, pageCount: Int) -> Int {
-        let rawIndex: CGFloat
+    /// Release velocity (pt/s) above which a flick turns the page even below
+    /// `progressTurnThreshold`.
+    static let flickVelocityThreshold: CGFloat = 50
+
+    static var snapTimingParameters: UICubicTimingParameters {
+        UICubicTimingParameters(
+            controlPoint1: snapControlPoint1,
+            controlPoint2: snapControlPoint2
+        )
+    }
+
+    /// Picks the page to snap to when the finger lifts.
+    static func targetPageIndex(
+        progress: CGFloat,
+        velocity: CGFloat,
+        currentPage: Int,
+        pageCount: Int
+    ) -> Int {
+        let maxIndex = pageCount - 1
+        let lower = floor(progress)
+        let fraction = progress - lower
+
         if abs(velocity) > flickVelocityThreshold {
-            rawIndex = velocity > 0 ? progress.rounded(.up) : progress.rounded(.down)
-        } else {
-            rawIndex = progress.rounded()
+            let target = velocity > 0 ? currentPage + 1 : currentPage - 1
+            return min(max(target, 0), maxIndex)
         }
-        return Int(min(max(rawIndex, 0), CGFloat(pageCount - 1)))
+
+        if currentPage == 0 {
+            return fraction >= progressTurnThreshold ? min(1, maxIndex) : 0
+        }
+
+        return fraction <= (1 - progressTurnThreshold) ? max(currentPage - 1, 0) : currentPage
     }
 }
 
-/// Finds the pager's enclosing `UIScrollView` and disables rubber-banding so
-/// the first/last page stops dead at the edge. Walking *up* the hierarchy is
-/// what keeps this from touching the `List` inside each page (a sibling
-/// subtree, not an ancestor).
-private struct PagerBounceDisabler: UIViewRepresentable {
+// MARK: - UIKit scroll snap (SwiftUI `withAnimation` + `scrollTo` does not
+// override `.scrollTargetBehavior(.paging)` deceleration, so we intercept
+// `scrollViewWillEndDragging` and drive `contentOffset` ourselves.)
+
+private final class PagerScrollSnapHandler {
+    let pageCount: Int
+    let currentPage: () -> Int
+    var onPageSettled: ((Int) -> Void)?
+    private var activeAnimator: UIViewPropertyAnimator?
+
+    init(pageCount: Int, currentPage: @escaping () -> Int) {
+        self.pageCount = pageCount
+        self.currentPage = currentPage
+    }
+
+    func handleWillEndDragging(_ scrollView: UIScrollView, velocity: CGPoint) {
+        let pageWidth = scrollView.bounds.width
+        guard pageWidth > 0 else { return }
+
+        let progress = scrollView.contentOffset.x / pageWidth
+        let targetIndex = RootPagerMotion.targetPageIndex(
+            progress: progress,
+            velocity: velocity.x,
+            currentPage: currentPage(),
+            pageCount: pageCount
+        )
+        let targetX = CGFloat(targetIndex) * pageWidth
+
+        activeAnimator?.stopAnimation(true)
+
+        guard abs(scrollView.contentOffset.x - targetX) > 0.5 else {
+            onPageSettled?(targetIndex)
+            return
+        }
+
+        let animator = UIViewPropertyAnimator(
+            duration: RootPagerMotion.snapDuration,
+            timingParameters: RootPagerMotion.snapTimingParameters
+        )
+        animator.addAnimations {
+            scrollView.contentOffset = CGPoint(x: targetX, y: scrollView.contentOffset.y)
+        }
+        animator.addCompletion { [weak self] _ in
+            self?.activeAnimator = nil
+            self?.onPageSettled?(targetIndex)
+        }
+        activeAnimator = animator
+        animator.startAnimation()
+    }
+}
+
+private final class PagerScrollDelegateProxy: NSObject, UIScrollViewDelegate {
+    weak var originalDelegate: UIScrollViewDelegate?
+    let snapHandler: PagerScrollSnapHandler
+
+    init(snapHandler: PagerScrollSnapHandler) {
+        self.snapHandler = snapHandler
+    }
+
+    override func responds(to aSelector: Selector!) -> Bool {
+        super.responds(to: aSelector) || (originalDelegate?.responds(to: aSelector) ?? false)
+    }
+
+    override func forwardingTarget(for aSelector: Selector!) -> Any? {
+        if super.responds(to: aSelector) { return self }
+        return originalDelegate
+    }
+
+    func scrollViewWillEndDragging(
+        _ scrollView: UIScrollView,
+        withVelocity velocity: CGPoint,
+        targetContentOffset: UnsafeMutablePointer<CGPoint>
+    ) {
+        originalDelegate?.scrollViewWillEndDragging?(
+            scrollView,
+            withVelocity: velocity,
+            targetContentOffset: targetContentOffset
+        )
+        // Cancel UIKit paging deceleration; our animator takes over below.
+        targetContentOffset.pointee = scrollView.contentOffset
+        snapHandler.handleWillEndDragging(scrollView, velocity: velocity)
+    }
+}
+
+private struct PagerScrollController: UIViewRepresentable {
+    let pageCount: Int
+    let currentPage: () -> Int
+    let onPageSettled: (Int) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(pageCount: pageCount, currentPage: currentPage, onPageSettled: onPageSettled)
+    }
+
     func makeUIView(context: Context) -> UIView {
-        let probe = UIView()
-        DispatchQueue.main.async { [weak probe] in
-            var view = probe?.superview
-            while let current = view {
-                if let scrollView = current as? UIScrollView {
-                    scrollView.bounces = false
-                    return
-                }
-                view = current.superview
-            }
+        let probe = UIView(frame: .zero)
+        DispatchQueue.main.async {
+            context.coordinator.attachIfNeeded(from: probe)
         }
         return probe
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {}
+    func updateUIView(_ uiView: UIView, context: Context) {
+        DispatchQueue.main.async {
+            context.coordinator.attachIfNeeded(from: uiView)
+        }
+    }
+
+    final class Coordinator {
+        let snapHandler: PagerScrollSnapHandler
+        private weak var attachedScrollView: UIScrollView?
+        private var delegateProxy: PagerScrollDelegateProxy?
+
+        init(pageCount: Int, currentPage: @escaping () -> Int, onPageSettled: @escaping (Int) -> Void) {
+            snapHandler = PagerScrollSnapHandler(pageCount: pageCount, currentPage: currentPage)
+            snapHandler.onPageSettled = onPageSettled
+        }
+
+        func attachIfNeeded(from view: UIView) {
+            var candidate: UIView? = view.superview
+            while let current = candidate {
+                if let scrollView = current as? UIScrollView {
+                    guard attachedScrollView !== scrollView else { return }
+
+                    attachedScrollView = scrollView
+                    scrollView.bounces = false
+
+                    let proxy = PagerScrollDelegateProxy(snapHandler: snapHandler)
+                    proxy.originalDelegate = scrollView.delegate
+                    scrollView.delegate = proxy
+                    delegateProxy = proxy
+                    return
+                }
+                candidate = current.superview
+            }
+        }
+    }
 }
 
 private struct RootPageScrollTransitionModifier: ViewModifier {
