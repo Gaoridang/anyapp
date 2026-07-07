@@ -53,23 +53,27 @@ private struct RootPhoneShell: View {
                         RootPagerTitle(progress: pagerProgress)
                     }
                     ToolbarItemGroup(placement: .topBarTrailing) {
-                        EditButton()
-                        Button(action: addMemo) {
-                            Label("새 메모", systemImage: "plus")
+                        Group {
+                            EditButton()
+                            Button(action: addMemo) {
+                                Label("새 메모", systemImage: "plus")
+                            }
+                            .accessibilityIdentifier("addMemoButton")
                         }
-                        .accessibilityIdentifier("addMemoButton")
+                        .opacity(1 - pagerProgress)
+                        .allowsHitTesting(pagerProgress < 0.5)
                     }
-                    .opacity(1 - pagerProgress)
-                    .allowsHitTesting(pagerProgress < 0.5)
                     ToolbarItemGroup(placement: .topBarTrailing) {
-                        Button(action: shadowingSession.resetSession) {
-                            Label("다시 하기", systemImage: "arrow.counterclockwise")
+                        Group {
+                            Button(action: shadowingSession.resetSession) {
+                                Label("다시 하기", systemImage: "arrow.counterclockwise")
+                            }
+                            .disabled(!shadowingSession.canReset)
+                            .accessibilityIdentifier("resetShadowingButton")
                         }
-                        .disabled(!shadowingSession.canReset)
-                        .accessibilityIdentifier("resetShadowingButton")
+                        .opacity(pagerProgress)
+                        .allowsHitTesting(pagerProgress > 0.5)
                     }
-                    .opacity(pagerProgress)
-                    .allowsHitTesting(pagerProgress > 0.5)
                 }
                 .navigationDestination(for: PersistentIdentifier.self) { id in
                     if let item = modelContext.model(for: id) as? Item {
