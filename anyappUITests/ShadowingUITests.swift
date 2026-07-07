@@ -10,24 +10,25 @@ final class ShadowingUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    private func openMenu(in app: XCUIApplication) {
-        let menuButton = app.buttons["appMenuButton"]
-        XCTAssertTrue(menuButton.waitForExistence(timeout: 5))
-        menuButton.tap()
-
-        let menuView = app.otherElements["appMenuView"]
-        XCTAssertTrue(menuView.waitForExistence(timeout: 5))
+    private func swipeToShadowing(in app: XCUIApplication) {
+        let root = app.otherElements["rootContainer"]
+        XCTAssertTrue(root.waitForExistence(timeout: 5))
+        root.swipeLeft()
     }
 
-    func testMenuSwitchesToShadowingTab() throws {
+    private func swipeToMemo(in app: XCUIApplication) {
+        let root = app.otherElements["rootContainer"]
+        XCTAssertTrue(root.waitForExistence(timeout: 5))
+        root.swipeRight()
+    }
+
+    func testSwipeSwitchesToShadowingTab() throws {
         let app = XCUIApplication()
         app.launch()
 
-        openMenu(in: app)
+        XCTAssertTrue(app.buttons["addMemoButton"].waitForExistence(timeout: 5))
 
-        let shadowingTab = app.buttons["shadowingTab"]
-        XCTAssertTrue(shadowingTab.waitForExistence(timeout: 5))
-        shadowingTab.tap()
+        swipeToShadowing(in: app)
 
         XCTAssertTrue(app.staticTexts["쉐도잉"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.otherElements["koreanStepCard"].exists)
@@ -35,16 +36,16 @@ final class ShadowingUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["verificationStepCard"].exists)
     }
 
-    func testMenuReturnsToMemoList() throws {
+    func testSwipeReturnsToMemoList() throws {
         let app = XCUIApplication()
         app.launch()
 
-        openMenu(in: app)
-        app.buttons["shadowingTab"].tap()
+        XCTAssertTrue(app.buttons["addMemoButton"].waitForExistence(timeout: 5))
+
+        swipeToShadowing(in: app)
         XCTAssertTrue(app.staticTexts["쉐도잉"].waitForExistence(timeout: 3))
 
-        openMenu(in: app)
-        app.buttons["memoTab"].tap()
+        swipeToMemo(in: app)
         XCTAssertTrue(app.buttons["addMemoButton"].waitForExistence(timeout: 3))
     }
 }

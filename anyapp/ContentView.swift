@@ -11,7 +11,6 @@ import SwiftData
 struct ContentView: View {
     @Binding var selectedTab: RootTab
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedItemID: PersistentIdentifier?
     @State private var navigationPath = NavigationPath()
     @State private var showAPIKeySettings = false
@@ -30,7 +29,7 @@ struct ContentView: View {
     private var sidebar: some View {
         List {
             Section("기능") {
-                ForEach(RootTab.contentTabs) { tab in
+                ForEach(RootTab.allCases) { tab in
                     Button {
                         selectedTab = tab
                     } label: {
@@ -57,7 +56,7 @@ struct ContentView: View {
             }
         }
         .listStyle(.sidebar)
-        .navigationTitle("메뉴")
+        .navigationTitle("기능")
         .toolbar {
             if selectedTab == .memo {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -73,12 +72,6 @@ struct ContentView: View {
     @ViewBuilder
     private var detailColumn: some View {
         switch selectedTab {
-        case .menu:
-            ContentUnavailableView(
-                "기능을 선택하세요",
-                systemImage: "sidebar.left",
-                description: Text("왼쪽에서 메모, 쉐도잉, 연습 중 하나를 선택하세요.")
-            )
         case .memo:
             NavigationStack(path: $navigationPath) {
                 itemList
@@ -92,8 +85,6 @@ struct ContentView: View {
             }
         case .shadowing:
             ShadowingView(onShowSettings: { showAPIKeySettings = true })
-        case .speakingPractice:
-            SpeakingPracticeView()
         }
     }
 
