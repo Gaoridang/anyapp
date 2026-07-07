@@ -39,26 +39,25 @@ private struct RootPhoneShell: View {
         NavigationStack(path: $navigationPath) {
             tabPager
                 .navigationBarTitleDisplayMode(.inline)
+                // Toolbar items stay unconditional: a root view's toolbar never
+                // shows on pushed destinations, and removing items when the path
+                // changes both breaks re-display after popping back (items never
+                // return on iOS 26) and defeats the system's Liquid Glass morph
+                // between the leading item and the back button.
                 .toolbar {
-                    if navigationPath.isEmpty {
-                        ToolbarItem(placement: .principal) {
-                            RootPagerTitle(progress: pagerProgress)
-                        }
-                        ToolbarItem(placement: .topBarTrailing) {
-                            settingsButton
-                        }
-                        ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                        ToolbarItemGroup(placement: .topBarTrailing) {
-                            Group {
-                                EditButton()
-                                Button(action: addMemo) {
-                                    Label("새 메모", systemImage: "plus")
-                                }
-                                .accessibilityIdentifier("addMemoButton")
+                    ToolbarItem(placement: .topBarLeading) {
+                        settingsButton
+                    }
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        Group {
+                            EditButton()
+                            Button(action: addMemo) {
+                                Label("새 메모", systemImage: "plus")
                             }
-                            .opacity(1 - pagerProgress)
-                            .allowsHitTesting(pagerProgress < 0.5)
+                            .accessibilityIdentifier("addMemoButton")
                         }
+                        .opacity(1 - pagerProgress)
+                        .allowsHitTesting(pagerProgress < 0.5)
                     }
                 }
                 .navigationDestination(for: PersistentIdentifier.self) { id in
@@ -140,21 +139,6 @@ private struct RootPhoneShell: View {
             selectedItemID = newItem.persistentModelID
             navigationPath.append(newItem.persistentModelID)
         }
-    }
-}
-
-struct RootPagerTitle: View {
-    let progress: CGFloat
-
-    var body: some View {
-        ZStack {
-            Text(RootTab.memo.title)
-                .opacity(1 - progress)
-            Text(RootTab.shadowing.title)
-                .opacity(progress)
-        }
-        .font(.headline)
-        .animation(nil, value: progress)
     }
 }
 
