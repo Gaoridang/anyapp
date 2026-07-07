@@ -21,8 +21,13 @@ struct RootPagerMotionTests {
     }
 
     @Test func slowVelocityBelowThresholdDoesNotFlick() {
-        #expect(RootPagerMotion.targetPageIndex(progress: 0.15, velocity: 100, pageCount: pageCount) == 0)
-        #expect(RootPagerMotion.targetPageIndex(progress: 0.85, velocity: -100, pageCount: pageCount) == 1)
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.15, velocity: 80, pageCount: pageCount) == 0)
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.85, velocity: -80, pageCount: pageCount) == 1)
+    }
+
+    @Test func velocityJustAboveThresholdCountsAsFlick() {
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.15, velocity: 150, pageCount: pageCount) == 1)
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.85, velocity: -150, pageCount: pageCount) == 0)
     }
 
     @Test func targetIsClampedAtEdges() {
