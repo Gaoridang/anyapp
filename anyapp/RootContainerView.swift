@@ -125,6 +125,9 @@ private struct RootPhoneShell: View {
                     .id(RootTab.shadowing)
             }
             .scrollTargetLayout()
+            // Turns off UIScrollView rubber-banding so the first/last page
+            // cannot be pulled past the edge (SwiftUI has no bounce-off API).
+            .background(PagerBounceDisabler())
         }
         .scrollTargetBehavior(.paging)
         .scrollIndicators(.hidden)
@@ -179,6 +182,29 @@ enum RootPagerHaptics {
     static func pageChanged() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
+}
+
+/// Finds the pager's enclosing `UIScrollView` and disables rubber-banding so
+/// the first/last page stops dead at the edge. Walking *up* the hierarchy is
+/// what keeps this from touching the `List` inside each page (a sibling
+/// subtree, not an ancestor).
+private struct PagerBounceDisabler: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let probe = UIView()
+        DispatchQueue.main.async { [weak probe] in
+            var view = probe?.superview
+            while let current = view {
+                if let scrollView = current as? UIScrollView {
+                    scrollView.bounces = false
+                    return
+                }
+                view = current.superview
+            }
+        }
+        return probe
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
 }
 
 private struct RootPageScrollTransitionModifier: ViewModifier {
