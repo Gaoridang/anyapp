@@ -203,10 +203,10 @@ enum RootPagerHaptics {
 }
 
 enum RootPagerMotion {
-    /// cubic-bezier(0.45, 0, 0.25, 1) — a softer, more symmetric ease-in-out
-    /// than the Material standard curve. Fixed duration keeps every page turn
-    /// identical regardless of swipe speed.
-    static let snap: Animation = .timingCurve(0.45, 0.0, 0.25, 1.0, duration: 0.42)
+    /// cubic-bezier(0.22, 1, 0.36, 1) — ease-out (deceleration): the page keeps
+    /// most of the finger's momentum at release, then slows from the midpoint
+    /// and glides smoothly into place at the end. Not symmetric ease-in-out.
+    static let snap: Animation = .timingCurve(0.22, 1.0, 0.36, 1.0, duration: 0.45)
 
     /// Content-offset velocity (pt/s) above which a release counts as a flick
     /// toward the next page even if the drag covered less than half the width.
