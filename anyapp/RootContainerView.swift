@@ -39,16 +39,26 @@ private struct RootPhoneShell: View {
         NavigationStack(path: $navigationPath) {
             tabPager
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(.automatic, for: .navigationBar)
                 .toolbar {
-                    ToolbarItem(placement: .principal) {
-                        RootPagerTitle(progress: pagerProgress)
-                    }
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        settingsButton
-                    }
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        memoToolbarButtons
+                    if navigationPath.isEmpty {
+                        ToolbarItem(placement: .principal) {
+                            RootPagerTitle(progress: pagerProgress)
+                        }
+                        ToolbarItem(placement: .topBarTrailing) {
+                            settingsButton
+                        }
+                        ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                        ToolbarItemGroup(placement: .topBarTrailing) {
+                            Group {
+                                EditButton()
+                                Button(action: addMemo) {
+                                    Label("새 메모", systemImage: "plus")
+                                }
+                                .accessibilityIdentifier("addMemoButton")
+                            }
+                            .opacity(1 - pagerProgress)
+                            .allowsHitTesting(pagerProgress < 0.5)
+                        }
                     }
                 }
                 .navigationDestination(for: PersistentIdentifier.self) { id in
@@ -120,18 +130,6 @@ private struct RootPhoneShell: View {
             Label("Grok API 키", systemImage: "key")
         }
         .accessibilityIdentifier("apiSettingsButton")
-    }
-
-    private var memoToolbarButtons: some View {
-        HStack(spacing: 16) {
-            EditButton()
-            Button(action: addMemo) {
-                Label("새 메모", systemImage: "plus")
-            }
-            .accessibilityIdentifier("addMemoButton")
-        }
-        .opacity(1 - pagerProgress)
-        .allowsHitTesting(pagerProgress < 0.5)
     }
 
     func addMemo() {
