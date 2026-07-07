@@ -30,6 +30,7 @@ private struct RootPhoneShell: View {
 
     @State private var selectedTab: RootTab = .memo
     @State private var pagerProgress: CGFloat = 0
+    @State private var pagerPosition = ScrollPosition()
     @State private var navigationPath = NavigationPath()
     @State private var selectedItemID: PersistentIdentifier?
     @State private var showAPIKeySettings = false
@@ -93,17 +94,6 @@ private struct RootPhoneShell: View {
         }
     }
 
-    private var pagerTabPosition: Binding<RootTab?> {
-        Binding(
-            get: { selectedTab },
-            set: { newValue in
-                if let newValue {
-                    selectedTab = newValue
-                }
-            }
-        )
-    }
-
     private var tabPager: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 0) {
@@ -129,9 +119,11 @@ private struct RootPhoneShell: View {
             // cannot be pulled past the edge (SwiftUI has no bounce-off API).
             .background(PagerBounceDisabler())
         }
+        // Kept as a safety net: if the custom snap below ever fails to take
+        // over, the system still lands on a page boundary.
         .scrollTargetBehavior(.paging)
         .scrollIndicators(.hidden)
-        .scrollPosition(id: pagerTabPosition)
+        .scrollPosition($pagerPosition)
         .scrollDisabled(!navigationPath.isEmpty)
         .scrollClipDisabled()
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
@@ -140,6 +132,32 @@ private struct RootPhoneShell: View {
             return min(max(geometry.contentOffset.x / pageWidth, 0), 1)
         } action: { _, progress in
             pagerProgress = progress
+        }
+        .onScrollPhaseChange { oldPhase, newPhase, context in
+            // The moment the finger lifts, replace the velocity-dependent
+            // system deceleration with a fixed-duration ease-in-out snap.
+            // (`tracking` never scrolled, so a plain tap stays a no-op.)
+            guard oldPhase == .interacting,
+                  newPhase == .decelerating || newPhase == .idle else { return }
+            snapToPage(geometry: context.geometry, velocity: context.velocity)
+        }
+    }
+
+    private func snapToPage(geometry: ScrollGeometry, velocity: CGVector?) {
+        let pageWidth = geometry.containerSize.width
+        guard pageWidth > 0 else { return }
+
+        let targetIndex = RootPagerMotion.targetPageIndex(
+            progress: geometry.contentOffset.x / pageWidth,
+            velocity: velocity?.dx ?? 0,
+            pageCount: RootTab.allCases.count
+        )
+
+        withAnimation(RootPagerMotion.snap) {
+            pagerPosition.scrollTo(x: CGFloat(targetIndex) * pageWidth)
+        }
+        if let tab = RootTab(rawValue: targetIndex) {
+            selectedTab = tab
         }
     }
 
@@ -181,6 +199,33 @@ struct RootPagerTitle: View {
 enum RootPagerHaptics {
     static func pageChanged() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+}
+
+enum RootPagerMotion {
+    /// cubic-bezier(0.4, 0, 0.2, 1) — an ease-in-out whose early acceleration
+    /// is fast enough that taking over from a moving finger never stutters.
+    /// Fixed duration keeps every page turn identical regardless of swipe speed.
+    static let snap: Animation = .timingCurve(0.4, 0.0, 0.2, 1.0, duration: 0.35)
+
+    /// Content-offset velocity (pt/s) above which a release counts as a flick
+    /// toward the next page even if the drag covered less than half the width.
+    static let flickVelocityThreshold: CGFloat = 200
+
+    /// Picks the page to snap to when the finger lifts. Velocity only decides
+    /// the target page; the snap animation itself never depends on it.
+    /// - Parameters:
+    ///   - progress: content offset divided by page width (0 = first page).
+    ///   - velocity: content-offset velocity in pt/s (positive = toward last page).
+    ///   - pageCount: total number of pages.
+    static func targetPageIndex(progress: CGFloat, velocity: CGFloat, pageCount: Int) -> Int {
+        let rawIndex: CGFloat
+        if abs(velocity) > flickVelocityThreshold {
+            rawIndex = velocity > 0 ? progress.rounded(.up) : progress.rounded(.down)
+        } else {
+            rawIndex = progress.rounded()
+        }
+        return Int(min(max(rawIndex, 0), CGFloat(pageCount - 1)))
     }
 }
 
