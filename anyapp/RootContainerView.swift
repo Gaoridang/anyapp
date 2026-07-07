@@ -203,14 +203,14 @@ enum RootPagerHaptics {
 }
 
 enum RootPagerMotion {
-    /// cubic-bezier(0.4, 0, 0.2, 1) — an ease-in-out whose early acceleration
-    /// is fast enough that taking over from a moving finger never stutters.
-    /// Fixed duration keeps every page turn identical regardless of swipe speed.
-    static let snap: Animation = .timingCurve(0.4, 0.0, 0.2, 1.0, duration: 0.35)
+    /// cubic-bezier(0.22, 1, 0.36, 1) — ease-out (deceleration): the page keeps
+    /// most of the finger's momentum at release, then slows from the midpoint
+    /// and glides smoothly into place at the end. Not symmetric ease-in-out.
+    static let snap: Animation = .timingCurve(0.22, 1.0, 0.36, 1.0, duration: 0.45)
 
     /// Content-offset velocity (pt/s) above which a release counts as a flick
     /// toward the next page even if the drag covered less than half the width.
-    static let flickVelocityThreshold: CGFloat = 200
+    static let flickVelocityThreshold: CGFloat = 120
 
     /// Picks the page to snap to when the finger lifts. Velocity only decides
     /// the target page; the snap animation itself never depends on it.
