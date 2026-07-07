@@ -6,9 +6,9 @@
 import SwiftUI
 
 struct ShadowingView: View {
+    @Bindable var session: ShadowingSessionModel
     var onShowSettings: () -> Void
 
-    @State private var session = ShadowingSessionModel()
     @State private var shakeVerification = false
 
     var body: some View {
@@ -18,7 +18,7 @@ struct ShadowingView: View {
     private var scrollContent: some View {
         ScrollView {
             VStack(spacing: 16) {
-                headerSection
+                introSection
 
                 ShadowingStepCard(
                     stepNumber: 1,
@@ -63,17 +63,6 @@ struct ShadowingView: View {
                 .accessibilityIdentifier("englishStepCard")
 
                 verificationCard
-
-                if session.koreanText != nil || session.englishText != nil {
-                    Button(action: session.resetSession) {
-                        Label("다시 하기", systemImage: "arrow.counterclockwise")
-                            .font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("resetShadowingButton")
-                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -108,16 +97,12 @@ struct ShadowingView: View {
         }
     }
 
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("영어 쉐도잉")
-                .font(.title2.weight(.bold))
-            Text("한국어로 말하고, 영어로 따라 말한 뒤 번역이 맞는지 확인해 보세요.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.bottom, 4)
+    private var introSection: some View {
+        Text("한국어로 말하고, 영어로 따라 말한 뒤 번역이 맞는지 확인해 보세요.")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 4)
     }
 
     @ViewBuilder
@@ -468,5 +453,5 @@ private struct ShakeEffect: GeometryEffect {
 }
 
 #Preview {
-    ShadowingView(onShowSettings: {})
+    ShadowingView(session: ShadowingSessionModel(), onShowSettings: {})
 }
