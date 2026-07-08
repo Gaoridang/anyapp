@@ -16,6 +16,7 @@ struct ItemDetailView: View {
         case failed(String)
     }
 
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @Bindable var item: Item
@@ -41,6 +42,11 @@ struct ItemDetailView: View {
     @State private var showPhotoAlbum = false
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
     @State private var attachedImages: [UIImage] = []
+
+    @State private var showEditSheet = false
+    @State private var editText = ""
+    @State private var showDeleteConfirmation = false
+    @State private var isDeleting = false
 
     private var isTranscribing: Bool {
         if case .transcribing = transcriptionState { return true }
@@ -96,6 +102,30 @@ struct ItemDetailView: View {
         }
         .navigationTitle(item.timestamp.formatted(.dateTime.day().month().year().hour().minute()))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        editText = item.textNote
+                        showEditSheet = true
+                    } label: {
+                        Label("편집", systemImage: "pencil")
+                    }
+                    .accessibilityIdentifier("editMemoButton")
+
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Label("삭제", systemImage: "trash")
+                    }
+                    .accessibilityIdentifier("deleteMemoButton")
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .accessibilityIdentifier("memoMoreButton")
+                .accessibilityLabel("더 보기")
+            }
+        }
         .overlay(alignment: .top) { topBanner }
         .animation(.easeInOut(duration: 0.2), value: showSaveConfirmation)
         .animation(.easeInOut(duration: 0.2), value: recordingErrorMessage)
@@ -127,6 +157,39 @@ struct ItemDetailView: View {
         }
         .sheet(isPresented: $showPhotoAlbum) {
             PhotoAlbumSheet(selectedItems: $selectedPhotoItems)
+        }
+        .sheet(isPresented: $showEditSheet) {
+            NavigationStack {
+                TextEditor(text: $editText)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .scrollContentBackground(.hidden)
+                    .background(Color(.systemGroupedBackground))
+                    .navigationTitle("메모 편집")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("취소") {
+                                showEditSheet = false
+                            }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("저장", action: saveEditedMemo)
+                                .accessibilityIdentifier("saveEditedMemoButton")
+                        }
+                    }
+            }
+            .presentationDetents([.medium, .large])
+        }
+        .confirmationDialog(
+            "이 메모를 삭제할까요?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("삭제", role: .destructive, action: deleteMemo)
+            Button("취소", role: .cancel) {}
+        } message: {
+            Text("삭제한 메모는 복구할 수 없습니다.")
         }
         .onDisappear(perform: teardown)
     }
@@ -590,6 +653,34 @@ struct ItemDetailView: View {
 
     // MARK: - Notes
 
+    private func saveEditedMemo() {
+        item.textNote = editText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        do {
+            try modelContext.save()
+        } catch {
+            saveErrorMessage = error.localizedDescription
+            return
+        }
+
+        showEditSheet = false
+    }
+
+    private func deleteMemo() {
+        isDeleting = true
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
+        recorder.stopRecording()
+        showsRecordingUI = false
+        isHandlingRecordingTap = false
+        audioPlayer.stop()
+        recorder.deactivatePlaybackSession()
+        item.deleteAudioFile()
+        modelContext.delete(item)
+        try? modelContext.save()
+        dismiss()
+    }
+
     private func saveMemo() {
         dismissKeyboard()
         appendDraftToNote()
@@ -624,6 +715,8 @@ struct ItemDetailView: View {
     // MARK: - Lifecycle
 
     private func teardown() {
+        guard !isDeleting else { return }
+
         transcriptionTask?.cancel()
         transcriptionTask = nil
         recorder.stopRecording()
