@@ -456,8 +456,6 @@ private struct PagerScrollController: UIViewRepresentable {
             scrollView.bounces = true
             scrollView.alwaysBounceHorizontal = false
             scrollView.backgroundColor = RootPagerMotion.pagerBackgroundColor
-            scrollView.backgroundView = UIView(frame: scrollView.bounds)
-            scrollView.backgroundView?.backgroundColor = RootPagerMotion.pagerBackgroundColor
         }
     }
 }
