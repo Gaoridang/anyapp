@@ -10,14 +10,14 @@ import Testing
 struct RootPagerMotionTests {
     private let pageCount = 2
 
-    @Test func turnsPageAfterTwentyPercentDragFromMemo() {
-        #expect(RootPagerMotion.targetPageIndex(progress: 0.15, velocity: 0, currentPage: 0, pageCount: pageCount) == 0)
-        #expect(RootPagerMotion.targetPageIndex(progress: 0.25, velocity: 0, currentPage: 0, pageCount: pageCount) == 1)
+    @Test func turnsPageAfterHalfPageDragFromMemo() {
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.45, velocity: 0, currentPage: 0, pageCount: pageCount) == 0)
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.55, velocity: 0, currentPage: 0, pageCount: pageCount) == 1)
     }
 
-    @Test func turnsPageAfterTwentyPercentDragBackFromShadowing() {
-        #expect(RootPagerMotion.targetPageIndex(progress: 0.85, velocity: 0, currentPage: 1, pageCount: pageCount) == 1)
-        #expect(RootPagerMotion.targetPageIndex(progress: 0.75, velocity: 0, currentPage: 1, pageCount: pageCount) == 0)
+    @Test func turnsPageAfterHalfPageDragBackFromShadowing() {
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.55, velocity: 0, currentPage: 1, pageCount: pageCount) == 1)
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.45, velocity: 0, currentPage: 1, pageCount: pageCount) == 0)
     }
 
     @Test func flickTurnsPageBeforeDistanceThreshold() {
@@ -26,9 +26,9 @@ struct RootPagerMotionTests {
     }
 
     @Test func distancePastThresholdWinsOverReverseReleaseVelocity() {
-        // Slowing to a stop past 20% with a slight backward flick must not snap home first.
-        #expect(RootPagerMotion.targetPageIndex(progress: 0.35, velocity: -200, currentPage: 0, pageCount: pageCount) == 1)
-        #expect(RootPagerMotion.targetPageIndex(progress: 0.65, velocity: 200, currentPage: 1, pageCount: pageCount) == 0)
+        // Slowing to a stop past 50% with a slight backward flick must not snap home first.
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.55, velocity: -200, currentPage: 0, pageCount: pageCount) == 1)
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.45, velocity: 200, currentPage: 1, pageCount: pageCount) == 0)
     }
 
     @Test func edgeBounceOverscrollDoesNotChangePage() {
@@ -36,9 +36,9 @@ struct RootPagerMotionTests {
         #expect(RootPagerMotion.targetPageIndex(progress: -0.06, velocity: 0, currentPage: 0, pageCount: pageCount) == 0)
     }
 
-    @Test func middleReleaseAlwaysPicksASide() {
-        #expect(RootPagerMotion.targetPageIndex(progress: 0.45, velocity: 0, currentPage: 0, pageCount: pageCount) == 1)
-        #expect(RootPagerMotion.targetPageIndex(progress: 0.55, velocity: 0, currentPage: 1, pageCount: pageCount) == 0)
+    @Test func belowHalfPageWithoutFlickSnapsBack() {
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.40, velocity: 0, currentPage: 0, pageCount: pageCount) == 0)
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.60, velocity: 0, currentPage: 1, pageCount: pageCount) == 1)
     }
 
     @Test func flickAdvancesFromCurrentPage() {
@@ -47,13 +47,13 @@ struct RootPagerMotionTests {
     }
 
     @Test func slowVelocityBelowFlickThresholdUsesProgress() {
-        #expect(RootPagerMotion.targetPageIndex(progress: 0.05, velocity: 30, currentPage: 0, pageCount: pageCount) == 0)
-        #expect(RootPagerMotion.targetPageIndex(progress: 0.25, velocity: 30, currentPage: 0, pageCount: pageCount) == 1)
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.05, velocity: 15, currentPage: 0, pageCount: pageCount) == 0)
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.55, velocity: 15, currentPage: 0, pageCount: pageCount) == 1)
     }
 
     @Test func velocityJustAboveFlickThresholdCountsAsFlick() {
-        #expect(RootPagerMotion.targetPageIndex(progress: 0.05, velocity: 60, currentPage: 0, pageCount: pageCount) == 1)
-        #expect(RootPagerMotion.targetPageIndex(progress: 0.95, velocity: -60, currentPage: 1, pageCount: pageCount) == 0)
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.05, velocity: 30, currentPage: 0, pageCount: pageCount) == 1)
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.95, velocity: -30, currentPage: 1, pageCount: pageCount) == 0)
     }
 
     @Test func targetIsClampedAtEdges() {

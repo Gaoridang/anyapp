@@ -189,12 +189,12 @@ enum RootPagerMotion {
     static let minSnapDuration: TimeInterval = 0.24
     static let maxSnapDuration: TimeInterval = 0.46
 
-    /// Drag past 20% of a page width (default UIKit paging is ~50%) to turn.
-    static let progressTurnThreshold: CGFloat = 0.20
+    /// Drag past 50% of a page width to commit to the next page.
+    static let progressTurnThreshold: CGFloat = 0.50
 
     /// Release velocity (pt/s) above which a flick turns the page when the drag
     /// stayed below `progressTurnThreshold`.
-    static let flickVelocityThreshold: CGFloat = 50
+    static let flickVelocityThreshold: CGFloat = 25
 
     static func snapTimingParameters() -> UICubicTimingParameters {
         UICubicTimingParameters(
