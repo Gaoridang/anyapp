@@ -196,6 +196,16 @@ enum RootPagerMotion {
     /// stayed below `progressTurnThreshold`.
     static let flickVelocityThreshold: CGFloat = 25
 
+    /// Scroll-axis release velocity (pt/s). Positive moves toward the next page.
+    ///
+    /// `scrollViewWillEndDragging`'s velocity can read near zero once we pin
+    /// `targetContentOffset`; the pan recognizer keeps a stronger signal but its
+    /// X axis is finger motion (opposite scroll direction), so we flip the sign.
+    static func releaseVelocityX(in scrollView: UIScrollView, reported: CGPoint) -> CGFloat {
+        let panScrollX = -scrollView.panGestureRecognizer.velocity(in: scrollView).x
+        return abs(reported.x) >= abs(panScrollX) ? reported.x : panScrollX
+    }
+
     static func snapTimingParameters() -> UICubicTimingParameters {
         UICubicTimingParameters(
             controlPoint1: snapControlPoint1,
@@ -310,9 +320,10 @@ private final class PagerScrollSnapHandler {
 
         let fromPage = currentPage()
         let progress = scrollView.contentOffset.x / pageWidth
+        let releaseVelocityX = RootPagerMotion.releaseVelocityX(in: scrollView, reported: velocity)
         let targetIndex = RootPagerMotion.targetPageIndex(
             progress: progress,
-            velocity: velocity.x,
+            velocity: releaseVelocityX,
             currentPage: fromPage,
             pageCount: pageCount
         )
