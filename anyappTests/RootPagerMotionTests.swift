@@ -21,8 +21,10 @@ struct RootPagerMotionTests {
     }
 
     @Test func flickTurnsPageBeforeDistanceThreshold() {
+        // Below 50% drag, a fast release in the scroll direction still advances.
         #expect(RootPagerMotion.targetPageIndex(progress: 0.12, velocity: 250, currentPage: 0, pageCount: pageCount) == 1)
         #expect(RootPagerMotion.targetPageIndex(progress: 0.88, velocity: -250, currentPage: 1, pageCount: pageCount) == 0)
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.02, velocity: 80, currentPage: 0, pageCount: pageCount) == 1)
     }
 
     @Test func distancePastThresholdWinsOverReverseReleaseVelocity() {
