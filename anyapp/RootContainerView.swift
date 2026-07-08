@@ -190,13 +190,9 @@ enum RootPagerMotion {
     /// Drag past 20% of a page width (default UIKit paging is ~50%) to turn.
     static let progressTurnThreshold: CGFloat = 0.20
 
-    /// Release velocity (pt/s) above which a flick turns the page even below
-    /// `progressTurnThreshold`.
+    /// Release velocity (pt/s) above which a flick turns the page when the drag
+    /// stayed below `progressTurnThreshold`.
     static let flickVelocityThreshold: CGFloat = 50
-
-    /// Converts release velocity (pt/s) into a fractional page offset for intent
-    /// projection. 250 pt/s ≈ +0.10 page units.
-    static let velocityProjectionFactor: CGFloat = 0.0004
 
     static func snapTimingParameters() -> UICubicTimingParameters {
         UICubicTimingParameters(
@@ -213,9 +209,11 @@ enum RootPagerMotion {
 
     static var pagerBackgroundColor: UIColor { .systemGroupedBackground }
 
-    /// Picks the page to snap to when the finger lifts. Uses distance from the
-    /// *current* page plus a short velocity projection so a light flick still
-    /// turns the page without a two-step “return home, then advance” animation.
+    /// Picks the page to snap to when the finger lifts.
+    ///
+    /// Priority: dragged distance past threshold wins first (so slowing to a stop
+    /// with a small negative release velocity does not flip back to the origin
+    /// page). Flick velocity only applies below the distance threshold.
     static func targetPageIndex(
         progress: CGFloat,
         velocity: CGFloat,
@@ -226,17 +224,17 @@ enum RootPagerMotion {
         let clampedPage = min(max(currentPage, 0), maxIndex)
         let offsetFromCurrent = progress - CGFloat(clampedPage)
 
-        if abs(velocity) > flickVelocityThreshold {
-            let target = velocity > 0 ? clampedPage + 1 : clampedPage - 1
-            return min(max(target, 0), maxIndex)
-        }
-
-        let projectedOffset = offsetFromCurrent + velocity * velocityProjectionFactor
-
-        if projectedOffset >= progressTurnThreshold {
+        if offsetFromCurrent >= progressTurnThreshold {
             return min(clampedPage + 1, maxIndex)
         }
-        if projectedOffset <= -progressTurnThreshold {
+        if offsetFromCurrent <= -progressTurnThreshold {
+            return max(clampedPage - 1, 0)
+        }
+
+        if velocity > flickVelocityThreshold {
+            return min(clampedPage + 1, maxIndex)
+        }
+        if velocity < -flickVelocityThreshold {
             return max(clampedPage - 1, 0)
         }
         return clampedPage
@@ -265,6 +263,7 @@ private final class PagerScrollSnapHandler {
     }
 
     var isAnimatingSnap: Bool { activeAnimator != nil }
+    var isCommittingSnap: Bool { hasCommittedSnap }
 
     func handleWillBeginDragging() {
         isDragging = true
@@ -290,6 +289,11 @@ private final class PagerScrollSnapHandler {
     func handleWillEndDragging(_ scrollView: UIScrollView, velocity: CGPoint) {
         isDragging = false
         hasCommittedSnap = true
+
+        // Freeze the visual position before UIKit/SwiftUI can snap elsewhere.
+        let locked = scrollView.contentOffset
+        scrollView.setContentOffset(locked, animated: false)
+
         commitSnap(in: scrollView, velocity: velocity)
     }
 
@@ -389,17 +393,20 @@ private final class PagerScrollDelegateProxy: NSObject, UIScrollViewDelegate {
         withVelocity velocity: CGPoint,
         targetContentOffset: UnsafeMutablePointer<CGPoint>
     ) {
-        originalDelegate?.scrollViewWillEndDragging?(
-            scrollView,
-            withVelocity: velocity,
-            targetContentOffset: targetContentOffset
-        )
-        // Cancel UIKit deceleration; our spring animator takes over below.
+        // Freeze native deceleration *before* SwiftUI's delegate runs — calling
+        // the original `willEndDragging` first lets it target page 0, which
+        // produced the visible “jump home, then forward” double step.
         targetContentOffset.pointee = scrollView.contentOffset
         snapHandler.handleWillEndDragging(scrollView, velocity: velocity)
     }
 
+    func scrollViewWillBeginDecelerating(_ scrollView: UIScrollView) {
+        // If UIKit still starts deceleration, stop it — our animator owns the snap.
+        scrollView.setContentOffset(scrollView.contentOffset, animated: false)
+    }
+
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        guard !snapHandler.isCommittingSnap, !snapHandler.isAnimatingSnap else { return }
         originalDelegate?.scrollViewDidEndDragging?(scrollView, willDecelerate: decelerate)
         snapHandler.handleDidEndDragging(scrollView, willDecelerate: decelerate)
     }
@@ -447,7 +454,7 @@ private struct PagerScrollController: UIViewRepresentable {
 
         func syncIfNeeded() {
             guard let scrollView = attachedScrollView else { return }
-            guard !scrollView.isDragging, !snapHandler.isAnimatingSnap else { return }
+            guard !scrollView.isDragging, !snapHandler.isAnimatingSnap, !snapHandler.isCommittingSnap else { return }
             let page = currentPage()
             guard lastSyncedPage != page else { return }
             lastSyncedPage = page
@@ -479,6 +486,7 @@ private struct PagerScrollController: UIViewRepresentable {
         private func configure(_ scrollView: UIScrollView) {
             scrollView.bounces = true
             scrollView.alwaysBounceHorizontal = false
+            scrollView.isPagingEnabled = false
             scrollView.backgroundColor = RootPagerMotion.pagerBackgroundColor
         }
     }
