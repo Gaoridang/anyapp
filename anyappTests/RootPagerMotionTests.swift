@@ -20,9 +20,15 @@ struct RootPagerMotionTests {
         #expect(RootPagerMotion.targetPageIndex(progress: 0.75, velocity: 0, currentPage: 1, pageCount: pageCount) == 0)
     }
 
-    @Test func velocityProjectionTurnsPageBeforeDistanceThreshold() {
+    @Test func flickTurnsPageBeforeDistanceThreshold() {
         #expect(RootPagerMotion.targetPageIndex(progress: 0.12, velocity: 250, currentPage: 0, pageCount: pageCount) == 1)
         #expect(RootPagerMotion.targetPageIndex(progress: 0.88, velocity: -250, currentPage: 1, pageCount: pageCount) == 0)
+    }
+
+    @Test func distancePastThresholdWinsOverReverseReleaseVelocity() {
+        // Slowing to a stop past 20% with a slight backward flick must not snap home first.
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.35, velocity: -200, currentPage: 0, pageCount: pageCount) == 1)
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.65, velocity: 200, currentPage: 1, pageCount: pageCount) == 0)
     }
 
     @Test func edgeBounceOverscrollDoesNotChangePage() {
