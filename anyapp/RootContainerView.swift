@@ -115,12 +115,14 @@ private struct RootPhoneShell: View {
             .background(PagerScrollController(
                 pageCount: RootTab.allCases.count,
                 currentPage: { selectedTab.rawValue },
-                onPageSettled: { pageIndex, didChangePage in
-                    if let tab = RootTab(rawValue: pageIndex) {
-                        selectedTab = tab
-                    }
+                onPageCommitted: { _, didChangePage in
                     if hapticsReady, didChangePage {
                         RootPagerHaptics.pageChanged()
+                    }
+                },
+                onPageSettled: { pageIndex, _ in
+                    if let tab = RootTab(rawValue: pageIndex) {
+                        selectedTab = tab
                     }
                 }
             ))
@@ -187,12 +189,12 @@ enum RootPagerMotion {
     static let minSnapDuration: TimeInterval = 0.24
     static let maxSnapDuration: TimeInterval = 0.46
 
-    /// Drag past 20% of a page width (default UIKit paging is ~50%) to turn.
-    static let progressTurnThreshold: CGFloat = 0.20
+    /// Drag past 50% of a page width to commit to the next page.
+    static let progressTurnThreshold: CGFloat = 0.50
 
     /// Release velocity (pt/s) above which a flick turns the page when the drag
     /// stayed below `progressTurnThreshold`.
-    static let flickVelocityThreshold: CGFloat = 50
+    static let flickVelocityThreshold: CGFloat = 25
 
     static func snapTimingParameters() -> UICubicTimingParameters {
         UICubicTimingParameters(
@@ -252,6 +254,7 @@ enum RootPagerMotion {
 private final class PagerScrollSnapHandler {
     let pageCount: Int
     let currentPage: () -> Int
+    var onPageCommitted: ((Int, Bool) -> Void)?
     var onPageSettled: ((Int, Bool) -> Void)?
     private var activeAnimator: UIViewPropertyAnimator?
     private var isDragging = false
@@ -316,6 +319,8 @@ private final class PagerScrollSnapHandler {
         let targetX = CGFloat(targetIndex) * pageWidth
         let didChangePage = targetIndex != fromPage
         let distanceFraction = abs(targetX - scrollView.contentOffset.x) / pageWidth
+
+        onPageCommitted?(targetIndex, didChangePage)
 
         animate(
             toOffsetX: targetX,
@@ -415,10 +420,16 @@ private final class PagerScrollDelegateProxy: NSObject, UIScrollViewDelegate {
 private struct PagerScrollController: UIViewRepresentable {
     let pageCount: Int
     let currentPage: () -> Int
+    let onPageCommitted: (Int, Bool) -> Void
     let onPageSettled: (Int, Bool) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(pageCount: pageCount, currentPage: currentPage, onPageSettled: onPageSettled)
+        Coordinator(
+            pageCount: pageCount,
+            currentPage: currentPage,
+            onPageCommitted: onPageCommitted,
+            onPageSettled: onPageSettled
+        )
     }
 
     func makeUIView(context: Context) -> UIView {
@@ -443,9 +454,15 @@ private struct PagerScrollController: UIViewRepresentable {
         private var delegateProxy: PagerScrollDelegateProxy?
         private var lastSyncedPage: Int?
 
-        init(pageCount: Int, currentPage: @escaping () -> Int, onPageSettled: @escaping (Int, Bool) -> Void) {
+        init(
+            pageCount: Int,
+            currentPage: @escaping () -> Int,
+            onPageCommitted: @escaping (Int, Bool) -> Void,
+            onPageSettled: @escaping (Int, Bool) -> Void
+        ) {
             self.currentPage = currentPage
             snapHandler = PagerScrollSnapHandler(pageCount: pageCount, currentPage: currentPage)
+            snapHandler.onPageCommitted = onPageCommitted
             snapHandler.onPageSettled = { [weak self] pageIndex, didChangePage in
                 self?.lastSyncedPage = pageIndex
                 onPageSettled(pageIndex, didChangePage)
