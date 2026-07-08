@@ -20,6 +20,16 @@ struct RootPagerMotionTests {
         #expect(RootPagerMotion.targetPageIndex(progress: 0.75, velocity: 0, currentPage: 1, pageCount: pageCount) == 0)
     }
 
+    @Test func edgeBounceOverscrollDoesNotChangePage() {
+        #expect(RootPagerMotion.targetPageIndex(progress: 1.08, velocity: 0, currentPage: 1, pageCount: pageCount) == 1)
+        #expect(RootPagerMotion.targetPageIndex(progress: -0.06, velocity: 0, currentPage: 0, pageCount: pageCount) == 0)
+    }
+
+    @Test func middleReleaseAlwaysPicksASide() {
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.45, velocity: 0, currentPage: 0, pageCount: pageCount) == 1)
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.55, velocity: 0, currentPage: 1, pageCount: pageCount) == 0)
+    }
+
     @Test func flickAdvancesFromCurrentPage() {
         #expect(RootPagerMotion.targetPageIndex(progress: 0.05, velocity: 200, currentPage: 0, pageCount: pageCount) == 1)
         #expect(RootPagerMotion.targetPageIndex(progress: 0.95, velocity: -200, currentPage: 1, pageCount: pageCount) == 0)
