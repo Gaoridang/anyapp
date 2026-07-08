@@ -7,30 +7,50 @@ import SwiftData
 import SwiftUI
 
 struct MemoListView: View {
+    @Environment(\.editMode) private var editMode
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Item.timestamp, order: .reverse) private var items: [Item]
 
     @Binding var navigationPath: NavigationPath
     @Binding var selectedItemID: PersistentIdentifier?
     var showsNavigationLinks: Bool
+    /// Swipe-to-delete conflicts with the root horizontal pager; keep edit-mode delete.
+    var allowsSwipeToDelete: Bool = true
+
+    private var isEditing: Bool {
+        editMode?.wrappedValue.isEditing ?? false
+    }
 
     var body: some View {
         List(selection: showsNavigationLinks ? nil : $selectedItemID) {
-            ForEach(items) { item in
-                if showsNavigationLinks {
-                    NavigationLink(value: item.persistentModelID) {
-                        ItemRowView(item: item)
-                    }
-                } else {
-                    ItemRowView(item: item)
-                        .tag(item.persistentModelID)
+            if allowsSwipeToDelete || isEditing {
+                ForEach(items) { item in
+                    row(for: item)
+                }
+                .onDelete(perform: deleteItems)
+            } else {
+                ForEach(items) { item in
+                    row(for: item)
                 }
             }
-            .onDelete(perform: deleteItems)
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemGroupedBackground))
         .contentMargins(.top, 8, for: .scrollContent)
         .safeAreaPadding(.bottom)
+    }
+
+    @ViewBuilder
+    private func row(for item: Item) -> some View {
+        if showsNavigationLinks {
+            NavigationLink(value: item.persistentModelID) {
+                ItemRowView(item: item)
+            }
+        } else {
+            ItemRowView(item: item)
+                .tag(item.persistentModelID)
+        }
     }
 
     private func deleteItems(offsets: IndexSet) {
