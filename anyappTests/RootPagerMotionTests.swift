@@ -20,6 +20,16 @@ struct RootPagerMotionTests {
         #expect(RootPagerMotion.targetPageIndex(progress: 0.45, velocity: 0, currentPage: 1, pageCount: pageCount) == 0)
     }
 
+    @Test func committedPageTracksLastTurnNotStaleTab() {
+        // After committing to page 1, a reverse flick near page 1 must reach page 0.
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.92, velocity: -80, currentPage: 1, pageCount: pageCount) == 0)
+    }
+
+    @Test func staleTabZeroNearPageOneBlocksReverseFlick() {
+        // Without committed-page tracking, selectedTab 0 at offset 0.92 blocks going back.
+        #expect(RootPagerMotion.targetPageIndex(progress: 0.92, velocity: -80, currentPage: 0, pageCount: pageCount) == 1)
+    }
+
     @Test func flickTurnsPageBeforeDistanceThreshold() {
         // Below 50% drag, a fast release in the scroll direction still advances.
         #expect(RootPagerMotion.targetPageIndex(progress: 0.12, velocity: 250, currentPage: 0, pageCount: pageCount) == 1)

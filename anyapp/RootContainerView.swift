@@ -115,16 +115,15 @@ private struct RootPhoneShell: View {
             .background(PagerScrollController(
                 pageCount: RootTab.allCases.count,
                 currentPage: { selectedTab.rawValue },
-                onPageCommitted: { _, didChangePage in
+                onPageCommitted: { pageIndex, didChangePage in
+                    if let tab = RootTab(rawValue: pageIndex) {
+                        selectedTab = tab
+                    }
                     if hapticsReady, didChangePage {
                         RootPagerHaptics.pageChanged()
                     }
                 },
-                onPageSettled: { pageIndex, _ in
-                    if let tab = RootTab(rawValue: pageIndex) {
-                        selectedTab = tab
-                    }
-                }
+                onPageSettled: { _, _ in }
             ))
         }
         .background(Color(.systemGroupedBackground))
@@ -269,20 +268,23 @@ private final class PagerScrollSnapHandler {
     private var activeAnimator: UIViewPropertyAnimator?
     private var isDragging = false
     private var hasCommittedSnap = false
+    private var committedPageIndex: Int
 
     init(pageCount: Int, currentPage: @escaping () -> Int) {
         self.pageCount = pageCount
         self.currentPage = currentPage
+        committedPageIndex = currentPage()
     }
 
     var isAnimatingSnap: Bool { activeAnimator != nil }
     var isCommittingSnap: Bool { hasCommittedSnap }
 
-    func handleWillBeginDragging() {
+    func handleWillBeginDragging(_ scrollView: UIScrollView) {
         isDragging = true
         hasCommittedSnap = false
         if let activeAnimator {
             activeAnimator.stopAnimation(true)
+            activeAnimator.finishAnimation(at: .current)
             self.activeAnimator = nil
         }
     }
@@ -296,6 +298,7 @@ private final class PagerScrollSnapHandler {
         let targetX = CGFloat(currentPage()) * pageWidth
         guard abs(scrollView.contentOffset.x - targetX) > 0.5 else { return }
 
+        committedPageIndex = currentPage()
         scrollView.contentOffset = CGPoint(x: targetX, y: scrollView.contentOffset.y)
     }
 
@@ -318,8 +321,8 @@ private final class PagerScrollSnapHandler {
         let pageWidth = scrollView.bounds.width
         guard pageWidth > 0 else { return }
 
-        let fromPage = currentPage()
         let progress = scrollView.contentOffset.x / pageWidth
+        let fromPage = committedPageIndex
         let releaseVelocityX = RootPagerMotion.releaseVelocityX(in: scrollView, reported: velocity)
         let targetIndex = RootPagerMotion.targetPageIndex(
             progress: progress,
@@ -331,6 +334,7 @@ private final class PagerScrollSnapHandler {
         let didChangePage = targetIndex != fromPage
         let distanceFraction = abs(targetX - scrollView.contentOffset.x) / pageWidth
 
+        committedPageIndex = targetIndex
         onPageCommitted?(targetIndex, didChangePage)
 
         animate(
@@ -401,7 +405,7 @@ private final class PagerScrollDelegateProxy: NSObject, UIScrollViewDelegate {
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         originalDelegate?.scrollViewWillBeginDragging?(scrollView)
-        snapHandler.handleWillBeginDragging()
+        snapHandler.handleWillBeginDragging(scrollView)
     }
 
     func scrollViewWillEndDragging(
@@ -473,10 +477,13 @@ private struct PagerScrollController: UIViewRepresentable {
         ) {
             self.currentPage = currentPage
             snapHandler = PagerScrollSnapHandler(pageCount: pageCount, currentPage: currentPage)
-            snapHandler.onPageCommitted = onPageCommitted
-            snapHandler.onPageSettled = { [weak self] pageIndex, didChangePage in
+            snapHandler.onPageCommitted = { [weak self] pageIndex, didChangePage in
                 self?.lastSyncedPage = pageIndex
-                onPageSettled(pageIndex, didChangePage)
+                onPageCommitted(pageIndex, didChangePage)
+            }
+            snapHandler.onPageSettled = { [weak self] pageIndex, _ in
+                self?.lastSyncedPage = pageIndex
+                onPageSettled(pageIndex, false)
             }
         }
 
