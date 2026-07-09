@@ -17,8 +17,18 @@ struct MemoListView: View {
     /// Swipe-to-delete conflicts with the root horizontal pager; keep edit-mode delete.
     var allowsSwipeToDelete: Bool = true
 
+    @State private var searchText = ""
+
     private var isEditing: Bool {
         editMode?.wrappedValue.isEditing ?? false
+    }
+
+    private var filteredItems: [Item] {
+        MemoListGrouping.filtered(items, query: searchText)
+    }
+
+    private var sections: [(title: String, dayStart: Date, items: [Item])] {
+        MemoListGrouping.sections(from: filteredItems)
     }
 
     var body: some View {
@@ -29,16 +39,29 @@ struct MemoListView: View {
                     systemImage: "note.text",
                     description: Text("오른쪽 위 + 버튼으로 새 메모를 만들어 보세요")
                 )
+            } else if filteredItems.isEmpty {
+                ContentUnavailableView(
+                    "검색 결과 없음",
+                    systemImage: "magnifyingglass",
+                    description: Text("다른 검색어를 입력해 보세요")
+                )
+                .searchable(text: $searchText, prompt: "메모 검색")
             } else {
                 List(selection: showsNavigationLinks ? nil : $selectedItemID) {
-                    if allowsSwipeToDelete || isEditing {
-                        ForEach(items) { item in
-                            row(for: item)
-                        }
-                        .onDelete(perform: deleteItems)
-                    } else {
-                        ForEach(items) { item in
-                            row(for: item)
+                    ForEach(sections, id: \.dayStart) { section in
+                        Section(section.title) {
+                            if allowsSwipeToDelete || isEditing {
+                                ForEach(section.items) { item in
+                                    row(for: item)
+                                }
+                                .onDelete { offsets in
+                                    deleteItems(offsets, in: section.items)
+                                }
+                            } else {
+                                ForEach(section.items) { item in
+                                    row(for: item)
+                                }
+                            }
                         }
                     }
                 }
@@ -47,6 +70,7 @@ struct MemoListView: View {
                 .background(Color(.systemGroupedBackground))
                 .contentMargins(.top, 8, for: .scrollContent)
                 .safeAreaPadding(.bottom)
+                .searchable(text: $searchText, prompt: "메모 검색")
             }
         }
     }
@@ -85,8 +109,8 @@ struct MemoListView: View {
         }
     }
 
-    private func deleteItems(offsets: IndexSet) {
-        let itemsToDelete = offsets.map { items[$0] }
+    private func deleteItems(_ offsets: IndexSet, in sectionItems: [Item]) {
+        let itemsToDelete = offsets.map { sectionItems[$0] }
         for item in itemsToDelete {
             deleteItem(item)
         }
