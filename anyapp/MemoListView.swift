@@ -138,61 +138,6 @@ struct ItemRowView: View {
     }
 }
 
-// MARK: - Temporary Item list preview APIs
-// Owned by Item.swift agent; remove this extension once Item provides these properties.
-private extension Item {
-    /// Body of the latest text entry with `[timestamp]` header stripped.
-    var listPreviewBody: String? {
-        let body = latestEntryBody
-        return body.isEmpty ? nil : body
-    }
-
-    var listTitle: String {
-        if let body = listPreviewBody {
-            return body
-        }
-        if audioFileName != nil {
-            return "음성 메모"
-        }
-        return "새 메모"
-    }
-
-    var listDurationText: String? {
-        guard let audioDuration, audioDuration > 0 else { return nil }
-        let totalSeconds = Int(audioDuration.rounded())
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-
-    var listSecondaryDateText: String {
-        timestamp.formatted(.relative(presentation: .named))
-    }
-
-    var listAccessibilityLabel: String {
-        var parts = [listTitle, listSecondaryDateText]
-        if let listDurationText {
-            parts.append(listDurationText)
-        }
-        if needsTranscription {
-            parts.append("변환 대기")
-        }
-        return parts.joined(separator: ", ")
-    }
-
-    private var latestEntryBody: String {
-        let trimmed = textNote.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "" }
-
-        let latest = trimmed.components(separatedBy: "\n\n").last ?? trimmed
-        var lines = latest.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        if let first = lines.first, first.hasPrefix("["), first.hasSuffix("]") {
-            lines.removeFirst()
-        }
-        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-}
-
 #Preview {
     NavigationStack {
         MemoListView(
