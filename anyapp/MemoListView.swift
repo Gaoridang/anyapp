@@ -22,23 +22,33 @@ struct MemoListView: View {
     }
 
     var body: some View {
-        List(selection: showsNavigationLinks ? nil : $selectedItemID) {
-            if allowsSwipeToDelete || isEditing {
-                ForEach(items) { item in
-                    row(for: item)
-                }
-                .onDelete(perform: deleteItems)
+        Group {
+            if items.isEmpty {
+                ContentUnavailableView(
+                    "메모가 없습니다",
+                    systemImage: "note.text",
+                    description: Text("오른쪽 위 + 버튼으로 새 메모를 만들어 보세요")
+                )
             } else {
-                ForEach(items) { item in
-                    row(for: item)
+                List(selection: showsNavigationLinks ? nil : $selectedItemID) {
+                    if allowsSwipeToDelete || isEditing {
+                        ForEach(items) { item in
+                            row(for: item)
+                        }
+                        .onDelete(perform: deleteItems)
+                    } else {
+                        ForEach(items) { item in
+                            row(for: item)
+                        }
+                    }
                 }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+                .background(Color(.systemGroupedBackground))
+                .contentMargins(.top, 8, for: .scrollContent)
+                .safeAreaPadding(.bottom)
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(Color(.systemGroupedBackground))
-        .contentMargins(.top, 8, for: .scrollContent)
-        .safeAreaPadding(.bottom)
     }
 
     @ViewBuilder
@@ -47,23 +57,38 @@ struct MemoListView: View {
             NavigationLink(value: item.persistentModelID) {
                 ItemRowView(item: item)
             }
+            .contextMenu {
+                Button("삭제", role: .destructive) {
+                    deleteItem(item)
+                }
+            }
         } else {
             ItemRowView(item: item)
                 .tag(item.persistentModelID)
+                .contextMenu {
+                    Button("삭제", role: .destructive) {
+                        deleteItem(item)
+                    }
+                }
+        }
+    }
+
+    private func deleteItem(_ item: Item) {
+        withAnimation {
+            let deletedID = item.persistentModelID
+            item.deleteAudioFile()
+            modelContext.delete(item)
+            if selectedItemID == deletedID {
+                selectedItemID = nil
+            }
+            navigationPath = NavigationPath()
         }
     }
 
     private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                items[index].deleteAudioFile()
-                modelContext.delete(items[index])
-            }
-            if let selectedItemID,
-               !items.contains(where: { $0.persistentModelID == selectedItemID }) {
-                self.selectedItemID = nil
-            }
-            navigationPath = NavigationPath()
+        let itemsToDelete = offsets.map { items[$0] }
+        for item in itemsToDelete {
+            deleteItem(item)
         }
     }
 }
@@ -74,31 +99,41 @@ struct ItemRowView: View {
     var body: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(item.timestamp, format: .dateTime.day().month().year().hour().minute())
+                Text(item.listTitle)
                     .font(.body)
+                    .fontWeight(.semibold)
+                    .lineLimit(2)
 
-                if !item.textNote.isEmpty {
-                    Text(item.textNote)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(item.listSecondaryDateText)
+                    if let duration = item.listDurationText {
+                        Text("·")
+                        Text(duration)
+                    }
                 }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 0)
 
-            HStack(spacing: 6) {
-                if item.audioFileName != nil {
-                    Image(systemName: "waveform")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if !item.textNote.isEmpty {
-                    Image(systemName: "text.alignleft")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
+            trailingAccessory
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(item.listAccessibilityLabel)
+    }
+
+    @ViewBuilder
+    private var trailingAccessory: some View {
+        if item.needsTranscription {
+            ProgressView()
+                .controlSize(.mini)
+                .accessibilityHidden(true)
+        } else if item.audioFileName != nil, item.listDurationText == nil {
+            Image(systemName: "waveform")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
         }
     }
 }
