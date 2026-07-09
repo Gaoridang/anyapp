@@ -135,7 +135,7 @@ struct ItemDetailView: View {
 
     @ViewBuilder
     private var contentStatusSection: some View {
-        Group {
+        VStack(spacing: 12) {
             if isTranscribing {
                 Text(transcribingStatusText)
                     .font(.subheadline)
@@ -143,6 +143,19 @@ struct ItemDetailView: View {
                     .accessibilityIdentifier("transcribingLabel")
             } else if let duration = item.audioDuration, !showsRecordingUI {
                 playbackControls(duration: duration)
+            }
+
+            if case .failed(let message) = transcriptionState {
+                VStack(spacing: 8) {
+                    Text(message)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button("다시 시도", action: retryTranscription)
+                        .font(.subheadline.weight(.medium))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 20)
             }
         }
         .frame(minHeight: 44)
@@ -333,13 +346,6 @@ struct ItemDetailView: View {
     private var bottomHint: some View {
         if let recordingErrorMessage {
             hintText(recordingErrorMessage)
-        } else if case .failed(let message) = transcriptionState {
-            VStack(spacing: 8) {
-                hintText(message)
-                Button("다시 시도", action: retryTranscription)
-                    .font(.subheadline.weight(.medium))
-            }
-            .padding(.bottom, 100)
         } else if case .permissionDenied = recorder.state {
             hintText("마이크를 사용할 수 없습니다.\n아래 입력창으로 메모를 작성하세요.")
         }

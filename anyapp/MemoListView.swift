@@ -126,8 +126,9 @@ struct ItemRowView: View {
     @ViewBuilder
     private var trailingAccessory: some View {
         if item.needsTranscription {
-            ProgressView()
-                .controlSize(.mini)
+            Image(systemName: "exclamationmark.circle")
+                .font(.caption)
+                .foregroundStyle(.orange)
                 .accessibilityHidden(true)
         } else if item.audioFileName != nil, item.listDurationText == nil {
             Image(systemName: "waveform")
