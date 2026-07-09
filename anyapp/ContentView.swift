@@ -60,7 +60,8 @@ struct ContentView: View {
         .navigationTitle("기능")
         .toolbar {
             if selectedTab == .memo {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    EditButton()
                     Button(action: addItem) {
                         Label("새 메모", systemImage: "plus")
                     }
