@@ -1,0 +1,34 @@
+# Cursor Automation — PR 주니어 설명 (Slack)
+#
+# 이 파일은 automation 설정을 버전 관리하기 위한 config-as-code입니다.
+# Cursor 대시보드에서 아래 값을 그대로 입력하거나,
+# IDE에서 `/automate` 스킬로 이 파일을 참조해 생성하세요.
+#
+# 설정: https://cursor.com/automations/new
+
+name: PR 주니어 설명 (Slack)
+enabled: true
+permission: team_visible  # private | team_visible | team_owned
+
+trigger:
+  - type: github
+    event: pull_request_opened
+    # Draft PR이 ready for review로 바뀔 때도 실행됨
+
+repository: Gaoridang/anyapp
+
+tools:
+  - send_to_slack:
+      channel: "#pr-updates"  # 실제 사용할 Slack 채널로 변경하세요
+  # - comment_on_pull_request  # PR에도 요약을 남기려면 주석 해제
+
+model: default  # 대시보드에서 선택
+
+prompt_file: .cursor/automations/pr-junior-explain.prompt.md
+
+setup:
+  prerequisites:
+    - Cursor Dashboard → Integrations → GitHub 연결
+    - Cursor Dashboard → Integrations → Slack 연결
+    - 대상 Slack 채널에서 `/invite @Cursor` 실행
+  dashboard_url: https://cursor.com/automations/new
