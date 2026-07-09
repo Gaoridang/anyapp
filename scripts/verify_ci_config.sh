@@ -22,6 +22,8 @@ check "workflow supports repository_dispatch" "grep -q 'repository_dispatch' .gi
 check "workflow accepts build_number input" "grep -q 'build_number:' .github/workflows/testflight.yml"
 check "workflow caches DerivedData" "grep -q 'Developer/Xcode/DerivedData' .github/workflows/testflight.yml"
 check "workflow uses write_asc_api_key script" "grep -q 'scripts/write_asc_api_key.sh' .github/workflows/testflight.yml"
+check "trigger_testflight script exists" "test -f scripts/trigger_testflight.sh"
+check "trigger_testflight uses repository_dispatch" "grep -q 'deploy-testflight' scripts/trigger_testflight.sh"
 check "ci-verify workflow exists" "test -f .github/workflows/ci-verify.yml"
 check "fastlane beta lane exists" "grep -q 'lane :beta' fastlane/Fastfile"
 check "fastlane passes xcode auth via xcargs" "grep -q 'authenticationKeyPath' fastlane/Fastfile"

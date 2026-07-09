@@ -18,6 +18,12 @@ alwaysApply: true
 - **Commit as you work** on each branch; do not leave large uncommitted chunks at the end.
 - Use descriptive branch names (e.g. `cursor/recording-ui-3cf7` for agent work).
 
+## TestFlight deploy (when user asks to merge + deploy)
+- **Do not open PRs as draft** when a TestFlight deploy is part of the request — draft PRs cannot merge. If already draft, run `gh pr ready` before merging.
+- After merging to `main`, trigger deploy with `./scripts/trigger_testflight.sh` — **never** `gh workflow run` (Cloud Agent tokens get HTTP 403 on `workflow_dispatch`).
+- Confirm the run with `gh run list --workflow=testflight.yml --limit 1` and report build number from logs if available.
+- See [`docs/release.md`](../docs/release.md) for the full runbook.
+
 ## App context
 - **Plus button** (toolbar in `ContentView`) creates a new `Item`.
 - **Item detail view** (currently inline `NavigationLink` destination in `ContentView`) is where features like recording belong.

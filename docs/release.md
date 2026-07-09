@@ -61,7 +61,9 @@ CI는 업로드 직후 완료됩니다 (`skip_waiting_for_build_processing: true
 
 ```
 폰에서 확인할 때
-         → GitHub Actions → TestFlight → Run workflow
+         → main 머지 (필요 시)
+         → ./scripts/trigger_testflight.sh   ← 권장 (CLI/에이전트)
+         또는 GitHub Actions → TestFlight → Run workflow
          → fastlane beta
          → 빌드 번호 자동 증가
          → 빌드 & TestFlight 업로드
@@ -71,6 +73,35 @@ CI는 업로드 직후 완료됩니다 (`skip_waiting_for_build_processing: true
 ```
 
 `main`에 코드를 push/merge해도 TestFlight 워크플로는 자동으로 실행되지 않습니다.
+
+## TestFlight 트리거 (CLI / Cloud Agent)
+
+**권장:** [`scripts/trigger_testflight.sh`](../scripts/trigger_testflight.sh) — `repository_dispatch`로 워크플로를 실행합니다.
+
+```bash
+# 빌드 번호 자동 증가
+./scripts/trigger_testflight.sh
+
+# 특정 빌드 번호 지정 (예: 40)
+./scripts/trigger_testflight.sh 40
+
+# 실행 상태 확인
+gh run list --workflow=testflight.yml --limit 3
+```
+
+**`gh workflow run`은 사용하지 않습니다.** Cloud Agent 등 일부 GitHub 토큰은 `workflow_dispatch` 권한이 없어 `HTTP 403`이 납니다. `repository_dispatch`는 위 스크립트로 안정적으로 동작합니다.
+
+GitHub Actions UI에서 **Run workflow**를 누르는 방식(`workflow_dispatch`)은 사람이 수동으로 실행할 때 그대로 사용 가능합니다.
+
+## Cloud Agent 배포 런북
+
+사용자가 **머지 + TestFlight 배포**를 요청했을 때:
+
+1. **PR을 draft로 만들지 않습니다.** draft PR은 머지할 수 없습니다. 이미 draft이면 `gh pr ready <번호>` 후 진행합니다.
+2. PR을 `main`에 머지합니다.
+3. `main`을 pull한 뒤 `./scripts/trigger_testflight.sh`로 배포를 트리거합니다. (`gh workflow run` 사용 금지)
+4. `gh run list --workflow=testflight.yml --limit 1`로 run ID를 확인하고, `gh run view <id> --json conclusion,status`로 완료 여부를 확인합니다.
+5. CI success 후 TestFlight 앱 반영까지 **1~5분** 추가 대기가 필요할 수 있음을 사용자에게 안내합니다.
 
 ## CI 최적화
 
@@ -103,5 +134,6 @@ Apple은 앱당 하루 업로드 횟수에 제한이 있습니다. 짧은 시간
 
 - [`anyapp.xcodeproj/project.pbxproj`](../anyapp.xcodeproj/project.pbxproj) — `MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`
 - [`fastlane/Fastfile`](../fastlane/Fastfile) — 빌드 번호 자동 증가 로직
-- [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml) — TestFlight 수동 배포 (`workflow_dispatch`)
+- [`scripts/trigger_testflight.sh`](../scripts/trigger_testflight.sh) — TestFlight 트리거 (`repository_dispatch`, CLI/에이전트 권장)
+- [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml) — TestFlight 수동 배포 (`workflow_dispatch`, UI용)
 - [`.github/workflows/ci-verify.yml`](../.github/workflows/ci-verify.yml) — CI 설정 검증
