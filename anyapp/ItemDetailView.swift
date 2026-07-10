@@ -228,6 +228,11 @@ struct ItemDetailView: View {
         }
     }
 
+    /// Collapsed capsule vs. ChatGPT-style expanded composer when the field is focused.
+    private var isComposerExpanded: Bool {
+        isTextFieldFocused && !showsRecordingUI
+    }
+
     private var inputToolbar: some View {
         HStack(alignment: .center, spacing: 10) {
             inputBar
@@ -239,6 +244,9 @@ struct ItemDetailView: View {
                 .fill(.bar)
                 // Extend under the home indicator only; never into the keyboard
                 // region, so the bar hugs the keyboard's top edge while resizing.
+                // Keyboard avoidance itself is automatic: this toolbar sits in a
+                // VStack outside the ScrollView, so the system keyboard safe-area
+                // inset lifts the whole bar with the keyboard.
                 .ignoresSafeArea(.container, edges: .bottom)
         }
         .contentShape(Rectangle())
@@ -250,41 +258,76 @@ struct ItemDetailView: View {
                     }
                 }
         )
+        .animation(.smooth(duration: 0.28), value: isComposerExpanded)
+        .animation(.easeInOut(duration: 0.2), value: hasUnsavedChanges)
+        .animation(.easeInOut(duration: 0.25), value: showsRecordingUI)
     }
 
     private var inputBar: some View {
-        HStack(alignment: .center, spacing: 8) {
-            attachButton
+        // Stable TextField slot in the top row; action chrome moves below when focused
+        // so the keyboard does not dismiss/reappear during the expand animation.
+        VStack(alignment: .leading, spacing: isComposerExpanded ? 10 : 0) {
+            HStack(alignment: isComposerExpanded ? .top : .center, spacing: 8) {
+                if !isComposerExpanded {
+                    attachButton
+                }
 
-            TextField("생각을 적어보세요", text: $draftText, axis: .vertical)
-                .focused($isTextFieldFocused)
-                .accessibilityIdentifier("memoTextField")
-                .lineLimit(1...5)
-                .textFieldStyle(.plain)
-                .padding(.vertical, 8)
-                .disabled(showsRecordingUI)
+                TextField("생각을 적어보세요", text: $draftText, axis: .vertical)
+                    .focused($isTextFieldFocused)
+                    .accessibilityIdentifier("memoTextField")
+                    .lineLimit(isComposerExpanded ? 1...6 : 1...2)
+                    .textFieldStyle(.plain)
+                    .padding(.vertical, isComposerExpanded ? 0 : 8)
+                    .disabled(showsRecordingUI)
 
-            if showsRecordingUI {
-                Text(formattedDuration(recorder.elapsedTime))
-                    .font(.system(.subheadline, design: .rounded, weight: .medium))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("recordingTimer")
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                if !isComposerExpanded {
+                    if showsRecordingUI {
+                        Text(formattedDuration(recorder.elapsedTime))
+                            .font(.system(.subheadline, design: .rounded, weight: .medium))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("recordingTimer")
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
+
+                    trailingActionButton
+                }
             }
 
-            if hasUnsavedChanges, !showsRecordingUI {
-                sendButton
-                    .transition(.opacity)
-            } else {
-                recordButton
-                    .transition(.opacity)
+            if isComposerExpanded {
+                HStack(spacing: 8) {
+                    attachButton
+                    Spacer(minLength: 0)
+                    trailingActionButton
+                }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
-        .frame(minHeight: 48)
         .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .background(Color(.secondarySystemGroupedBackground), in: Capsule())
+        .padding(.top, isComposerExpanded ? 10 : 4)
+        .padding(.bottom, isComposerExpanded ? 6 : 4)
+        .frame(minHeight: isComposerExpanded ? 96 : 48)
+        .background(
+            Color(.secondarySystemGroupedBackground),
+            in: RoundedRectangle(cornerRadius: isComposerExpanded ? 26 : 24, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: isComposerExpanded ? 26 : 24, style: .continuous)
+                .strokeBorder(Color.primary.opacity(isComposerExpanded ? 0.10 : 0.06), lineWidth: 1)
+        }
+        .accessibilityIdentifier("memoInputBar")
+        .accessibilityValue(isComposerExpanded ? "expanded" : "collapsed")
+    }
+
+    @ViewBuilder
+    private var trailingActionButton: some View {
+        if hasUnsavedChanges, !showsRecordingUI {
+            sendButton
+                .transition(.opacity)
+        } else {
+            recordButton
+                .transition(.opacity)
+        }
     }
 
     private var attachButton: some View {
